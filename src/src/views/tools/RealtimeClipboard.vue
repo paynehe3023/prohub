@@ -234,7 +234,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useHead } from '@vueuse/head';
 import { useRoute, useRouter } from 'vue-router';
 import QRCode from 'qrcode';
-import { io } from 'socket.io-client';
+import { io } from '实时连接-client';
 import { apiConfig } from '../../config/api';
 import {
   IconCheck,
@@ -259,13 +259,13 @@ useHead({
   title: '网页极速剪贴板 - proHub',
   meta: [
     { name: 'description', content: '免登录房间式剪贴板，支持文本、图片、文件跨端实时同步，二维码直达与阅后即焚自动清空。' },
-    { name: 'keywords', content: '剪贴板,实时同步,跨端同步,二维码,图片同步,文件同步,Socket.io' },
+    { name: 'keywords', content: '剪贴板,实时同步,跨端同步,二维码,图片同步,文件同步,实时连接' },
   ],
 });
 
 const route = useRoute();
 const router = useRouter();
-const socketBaseUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
+const socketBaseUrl = apiConfig.socketURL || window.location.origin;
 const ttlOptions = [5, 10, 15, 30, 60];
 const maxClips = 20;
 const inlineImageThreshold = 750 * 1024;
@@ -400,8 +400,8 @@ function connectSocket() {
   if (!roomId.value) return;
 
   socketState.value = 'connecting';
-  socketInstance = io(socketBaseUrl, {
-    path: '/socket.io',
+  socketInstance = io(socketBaseUrl, {`r`n    roomId: roomId.value,`r`n    ttlMinutes: roomTtlMinutes.value,
+    path: '/实时连接',
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: Infinity,
@@ -776,7 +776,7 @@ async function refreshQr() {
   qrCodeDataUrl.value = await QRCode.toDataURL(roomUrl.value, {
     width: 240,
     margin: 1,
-    errorCorrectionLevel: 'M',
+    errorCorrectionLevel: 'L',
     color: { dark: '#0f172a', light: '#ffffff' },
   });
 }
@@ -811,7 +811,7 @@ onMounted(() => {
     now.value = Date.now();
   }, 1000);
   visibilityHandler = () => {
-    showToast('success', document.visibilityState === 'visible' ? '页面已回到前台' : '页面已转入后台', document.visibilityState === 'visible' ? '连接状态仍由 Socket.io 自动保持。' : '继续后台运行，回到页面即可恢复可见状态。');
+    showToast('success', document.visibilityState === 'visible' ? '页面已回到前台' : '页面已转入后台', document.visibilityState === 'visible' ? '连接状态会自动重连保持。' : '继续后台运行，回到页面即可恢复可见状态。');
   };
   window.addEventListener('paste', handleGlobalPaste);
   document.addEventListener('visibilitychange', visibilityHandler);
@@ -838,3 +838,4 @@ onBeforeUnmount(() => {
   transform: translateY(-8px) scale(0.98);
 }
 </style>
+
