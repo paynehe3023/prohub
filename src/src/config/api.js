@@ -5,11 +5,15 @@
  * 生产环境: 同域下的 /api 路径
  */
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin;
 
 export const apiConfig = {
   baseURL: API_BASE_URL,
+  socketURL: SOCKET_URL,
   endpoints: {
     parse: '/parse',
+    clipboardUpload: '/clipboard/upload',
+    clipboardHealth: '/clipboard/health',
   },
 };
 

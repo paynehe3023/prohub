@@ -1,43 +1,27 @@
 <template>
-  <router-link
-    :to="tool.route"
-    class="group relative block p-6 rounded-2xl border transition-all duration-300 cursor-pointer"
-    :class="[
-      tool.status === 'coming_soon'
-        ? 'border-dashed border-gray-300 dark:border-gray-600 opacity-60 hover:opacity-80'
-        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:shadow-xl hover:shadow-brand-500/5 hover:border-brand-300 dark:hover:border-brand-700 hover:-translate-y-1',
-      cardBgClass,
-    ]"
-  >
-    <!-- Coming Soon 角标 -->
-    <span
-      v-if="tool.status === 'coming_soon'"
-      class="absolute top-3 right-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-700"
-    >
+  <router-link :to="tool.route"
+    class="group relative block p-5 rounded-[28px] transition-all duration-300 liquid-glass hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(0,0,0,0.60)]"
+    :class="{ 'opacity-50 hover:opacity-65 border-dashed': tool.status === 'coming_soon' }">
+    <span v-if="tool.isNew"
+      class="absolute top-3 right-3 px-2.5 py-0.5 text-[0.625rem] font-semibold tracking-wider rounded-full bg-ios-blue/20 text-ios-blue border border-ios-blue/30">
+      新工具
+    </span>
+    <span v-if="tool.status === 'coming_soon'"
+      class="absolute top-3 right-3 px-2.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wider rounded-full bg-ios-orange/20 text-ios-orange border border-ios-orange/30">
       即将上线
     </span>
-
-    <!-- 图标 -->
-    <div
-      class="w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-all duration-300 group-hover:scale-110"
-      :class="iconBgClass"
-    >
-      <component :is="iconComp" class="w-6 h-6" :class="iconColorClass" />
+    <div class="w-10 h-10 rounded-[13px] flex items-center justify-center mb-4 transition-all duration-300 group-hover:scale-105 shadow-sm"
+      :class="iconBgClass">
+      <component :is="iconComp" class="w-5 h-5" :class="iconColorClass" />
     </div>
-
-    <!-- 标题 -->
-    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2 group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
+    <h3 class="text-base font-semibold text-white mb-1.5 tracking-[-0.022em] text-glass">
       {{ tool.title }}
     </h3>
-
-    <!-- 描述 -->
-    <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2">
+    <p class="text-[0.8125rem] text-zinc-300 leading-relaxed tracking-[-0.01em] line-clamp-2 text-glass-sm">
       {{ tool.desc }}
     </p>
-
-    <!-- 分类标签 -->
-    <div class="mt-4 flex items-center gap-2">
-      <span class="px-2.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+    <div class="mt-4">
+      <span class="px-2.5 py-0.5 text-[0.6875rem] rounded-full liquid-glass-inset text-zinc-400 text-glass-sm">
         {{ tool.category }}
       </span>
     </div>
@@ -46,48 +30,10 @@
 
 <script setup>
 import { computed } from 'vue';
-import {
-  IconDownload,
-  IconFileText,
-  IconPhoto,
-  IconPalette,
-  IconArrowsExchange,
-} from '@tabler/icons-vue';
-
-const props = defineProps({
-  tool: { type: Object, required: true },
-});
-
-const iconMap = {
-  IconDownload,
-  IconFileText,
-  IconPhoto,
-  IconPalette,
-  IconArrowsExchange,
-};
-
+import { IconDownload, IconFileText, IconPhoto, IconPalette, IconArrowsExchange, IconCamera, IconNetwork } from '@tabler/icons-vue';
+const props = defineProps({ tool: { type: Object, required: true } });
+const iconMap = { IconDownload, IconFileText, IconPhoto, IconPalette, IconArrowsExchange, IconCamera, IconNetwork };
 const iconComp = computed(() => iconMap[props.tool.icon] || IconDownload);
-
-const cardBgClass = computed(() => {
-  if (props.tool.status === 'coming_soon') return 'bg-white/50 dark:bg-gray-800/30';
-  return 'bg-white dark:bg-gray-800';
-});
-
-const iconBgClass = computed(() => {
-  const map = {
-    '媒体/去水印': 'bg-blue-50 dark:bg-blue-900/30',
-    '文本处理':   'bg-emerald-50 dark:bg-emerald-900/30',
-    '实用计算':   'bg-purple-50 dark:bg-purple-900/30',
-  };
-  return map[props.tool.category] || 'bg-gray-50 dark:bg-gray-700';
-});
-
-const iconColorClass = computed(() => {
-  const map = {
-    '媒体/去水印': 'text-blue-600 dark:text-blue-400',
-    '文本处理':   'text-emerald-600 dark:text-emerald-400',
-    '实用计算':   'text-purple-600 dark:text-purple-400',
-  };
-  return map[props.tool.category] || 'text-gray-600 dark:text-gray-400';
-});
+const iconBgClass = computed(() => ({ '媒体/去水印':'bg-ios-blue/20', '文本处理':'bg-ios-green/20', '实用计算':'bg-ios-purple/20' }[props.tool.category] || 'bg-white/10'));
+const iconColorClass = computed(() => ({ '媒体/去水印':'text-ios-blue', '文本处理':'text-ios-green', '实用计算':'text-ios-purple' }[props.tool.category] || 'text-white/70'));
 </script>

@@ -3,47 +3,53 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
+const http = require('http');
 const parseRoute = require('./routes/parse');
+const removeBgRoute = require('./routes/remove-bg');
+const { registerClipboardRealtime } = require('./realtime/clipboard');
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
-// ---- 安全 & 日志中间件 ----
+// ---- Security & logging middleware ----
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: false,
 }));
 app.use(morgan('combined'));
 
-// ---- CORS 跨域 ----
+// ---- CORS ----
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 
-// ---- 解析 JSON 请求体 ----
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// ---- Body parsing ----
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-// ---- API 路由 ----
+// ---- API routes ----
 app.use('/api', parseRoute);
+app.use('/api', removeBgRoute);
+registerClipboardRealtime(app, server);
 
-// ---- 静态文件服务（生产环境托管前端构建产物） ----
+// ---- Static files (production frontend build) ----
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));
 
-// ---- SPA fallback: 所有非 API 请求返回 index.html ----
+// ---- SPA fallback ----
 app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-// ---- 全局错误处理 ----
+// ---- Global error handler ----
 app.use((err, req, res, _next) => {
   console.error('[Server Error]', err.message);
   res.status(500).json({ error: '服务器内部错误', message: err.message });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 proHub server running on http://localhost:${PORT}`);
 });

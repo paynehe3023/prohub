@@ -1,4 +1,16 @@
 services:
+  rembg:
+    image: danielgatis/rembg:latest
+    container_name: prohub-rembg
+    command: ["s"]
+    ports:
+      - "8080:7000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
   prohub:
     build:
       context: .
@@ -9,4 +21,18 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - REMBG_URL=http://rembg:7000
+      - REMBG_MODEL=u2netp
     restart: unless-stopped
+    depends_on:
+      - rembg
+
+
+
+
+
+
+
+
+
+

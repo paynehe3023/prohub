@@ -6,14 +6,46 @@
  */
 export const tools = [
   {
+    id: 'realtime-clipboard',
+    title: '网页极速剪贴板',
+    desc: '免登录房间式剪贴板，支持文本、图片和文件跨端实时同步',
+    category: '协作同步',
+    icon: 'IconClipboardText',
+    route: '/clipboard',
+    status: 'online',
+    isNew: true,
+    keywords: ['剪贴板', '同步', '二维码', '图片', '文件', 'Socket.io'],
+  },
+  {
     id: 'media-downloader',
     title: '社交平台无水印解析',
-    desc: '支持小红书、抖音、微博链接识别，提取无水印原图/视频与文案',
+    desc: '支持小红书、微博链接识别，提取无水印原图/视频与文案',
     category: '媒体/去水印',
     icon: 'IconDownload',
     route: '/tools/media-downloader',
     status: 'online',
-    keywords: ['无水印', '抖音', '小红书', '微博', '解析', '下载', '视频'],
+    keywords: ['无水印', '小红书', '微博', '解析', '下载', '视频'],
+  },
+  {
+    id: 'photo-bg-changer',
+    title: '证件照一键换底',
+    desc: 'AI 智能抠图 + 常用证件底色，快速生成标准证件照',
+    category: '媒体/去水印',
+    icon: 'IconCamera',
+    route: '/tools/photo-bg-changer',
+    status: 'online',
+    keywords: ['证件照', '换底', '抠图', '背景', '照片', 'AI'],
+  },
+  {
+    id: 'cidr-calculator',
+    title: 'CIDR 子网划分校验器',
+    desc: '纯前端 IPv4 子网划分、重叠检测、可视化区间与 ACL 导出',
+    category: '实用计算',
+    icon: 'IconNetwork',
+    route: '/tools/cidr-calculator',
+    status: 'online',
+    isNew: true,
+    keywords: ['CIDR', '子网划分', 'IP', '重叠检测', 'ACL', '网络'],
   },
   {
     id: 'text-formatter',
@@ -62,6 +94,7 @@ export const tools = [
  */
 export const categories = [
   { id: 'all',       label: '全部' },
+  { id: '协作同步',   label: '协作同步' },
   { id: '媒体/去水印', label: '媒体/去水印' },
   { id: '文本处理',   label: '文本处理' },
   { id: '实用计算',   label: '实用计算' },
@@ -81,3 +114,4 @@ export function getToolsByCategory(category) {
 export function getToolById(id) {
   return tools.find(t => t.id === id);
 }
+

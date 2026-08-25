@@ -1,6 +1,14 @@
 node_modules
+**/node_modules
 dist
 .git
+*/.git
 .env
 .DS_Store
 *.md
+liquid-glass-react
+impeccable
+*.log
+.venv-rembg
+douyin-dl-ref
+Umi-OCR

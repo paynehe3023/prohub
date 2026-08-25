@@ -1,38 +1,25 @@
 <template>
-  <header class="sticky top-0 z-50 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
-        <!-- Logo -->
-        <router-link to="/" class="flex items-center gap-2 group">
-          <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-lg shadow-brand-500/25">
-            <IconBox class="w-5 h-5 text-white" />
+  <header class="sticky top-3 z-50 mx-auto max-w-[95%] liquid-glass-strong">
+    <div class="px-5 sm:px-6">
+      <div class="flex items-center justify-between h-14">
+        <router-link to="/" class="flex items-center gap-2.5 group shrink-0">
+          <div class="w-8 h-8 rounded-[10px] bg-ios-blue flex items-center justify-center shadow-md shadow-ios-blue/25">
+            <IconBox class="w-4.5 h-4.5 text-white" />
           </div>
-          <span class="text-xl font-bold bg-gradient-to-r from-brand-600 to-brand-500 bg-clip-text text-transparent">
-            proHub
-          </span>
+          <span class="text-[1.0625rem] font-bold tracking-[-0.022em] text-white text-glass whitespace-nowrap">proHub</span>
         </router-link>
 
-        <!-- 导航 -->
-        <nav class="hidden md:flex items-center gap-6">
-          <router-link to="/" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
-            首页
-          </router-link>
-          <a href="#tools" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
-            工具
-          </a>
-          <a href="https://github.com/paynehe3023/prohub" target="_blank" rel="noopener" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
-            GitHub
-          </a>
+        <nav class="hidden md:flex items-center gap-6 mx-4">
+          <router-link to="/" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-zinc-300 text-glass-sm hover:text-white transition-colors whitespace-nowrap">首页</router-link>
+          <a href="#tools" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-zinc-300 text-glass-sm hover:text-white transition-colors whitespace-nowrap">工具</a>
+          <router-link to="/tools/cidr-calculator" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-ios-blue text-glass-sm hover:text-white transition-colors whitespace-nowrap">CIDR</router-link>
+          <a href="https://github.com/paynehe3023/prohub" target="_blank" rel="noopener" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-zinc-300 text-glass-sm hover:text-white transition-colors whitespace-nowrap">GitHub</a>
         </nav>
 
-        <!-- 暗黑模式切换 -->
-        <button
-          @click="toggleDark"
-          class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          :title="isDark ? '切换到亮色模式' : '切换到暗黑模式'"
-        >
-          <IconSun v-if="isDark" class="w-5 h-5 text-yellow-400" />
-          <IconMoon v-else class="w-5 h-5 text-gray-600" />
+        <button @click="toggleDark" class="w-8 h-8 rounded-full liquid-glass-inset flex items-center justify-center hover:shadow-lg active:scale-[0.95] transition-all shrink-0"
+          :title="isDark ? '暗黑' : '亮色'">
+          <IconSun v-if="isDark" class="w-3.5 h-3.5 text-ios-yellow" />
+          <IconMoon v-else class="w-3.5 h-3.5 text-white/70" />
         </button>
       </div>
     </div>
@@ -42,20 +29,12 @@
 <script setup>
 import { ref, watchEffect } from 'vue';
 import { IconBox, IconSun, IconMoon } from '@tabler/icons-vue';
-
 const isDark = ref(false);
-
-// 从 localStorage 或系统偏好读取暗黑模式
 watchEffect(() => {
-  const stored = localStorage.getItem('prohub-dark');
-  if (stored !== null) {
-    isDark.value = stored === 'true';
-  } else {
-    isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  }
+  const s = localStorage.getItem('prohub-dark');
+  isDark.value = s !== null ? s === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.classList.toggle('dark', isDark.value);
 });
-
 function toggleDark() {
   isDark.value = !isDark.value;
   localStorage.setItem('prohub-dark', String(isDark.value));

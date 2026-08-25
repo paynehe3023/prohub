@@ -1,0 +1,62 @@
+name: prohub-dev
+
+services:
+  rembg:
+    image: danielgatis/rembg:latest
+    container_name: prohub-rembg-dev
+    command: ["s"]
+    ports:
+      - "8081:7000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: prohub-backend-dev
+    working_dir: /app/server
+    ports:
+      - "3001:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      REMBG_URL: http://rembg:7000
+      REMBG_MODEL: u2netp
+    volumes:
+      - ./server:/app/server
+      - prohub_server_node_modules:/app/server/node_modules
+    command: ["node", "--watch", "index.js"]
+    restart: unless-stopped
+    depends_on:
+      - rembg
+
+  frontend:
+    image: node:22-alpine
+    container_name: prohub-frontend-dev
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:3000
+      VITE_SOCKET_URL: http://localhost:3001
+    volumes:
+      - ./src:/app
+      - prohub_frontend_node_modules:/app/node_modules
+    command: ["sh", "-c", "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"]
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+volumes:
+  prohub_server_node_modules:
+  prohub_frontend_node_modules:
+
+
+
+
+
+

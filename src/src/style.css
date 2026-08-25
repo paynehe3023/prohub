@@ -2,22 +2,114 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 自定义滚动条 */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 3px;
-}
-.dark ::-webkit-scrollbar-thumb {
-  background: #475569;
+/* === 太空壁纸背景 === */
+body {
+  background-image: url('/wallpaper.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* 平滑过渡 */
-* {
-  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+/* =============================================================
+   Liquid Glass — 加强版（可读性优先）
+   ============================================================= */
+
+/* 主容器：加厚透明度 + 内层暗色底衬 */
+.liquid-glass {
+  background: rgba(0, 0, 0, 0.20);
+  backdrop-filter: blur(36px) saturate(180%);
+  -webkit-backdrop-filter: blur(36px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.45);
+  border-left-color: rgba(255, 255, 255, 0.35);
+  border-radius: 28px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.60);
 }
+
+/* 内嵌玻璃（输入框/次级元素）— 加深底色确保输入文字可见 */
+.liquid-glass-inset {
+  background: rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.20);
+  border-radius: 18px;
+}
+
+/* 导航栏 — 略厚 */
+.liquid-glass-strong {
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  border-top-color: rgba(255, 255, 255, 0.40);
+  border-left-color: rgba(255, 255, 255, 0.30);
+  border-radius: 28px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.50);
+}
+
+/* =============================================================
+   文本可读性 — 多层阴影确保任何背景下可见
+   ============================================================= */
+.text-glass {
+  text-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.95),
+    0 1px 4px rgba(0, 0, 0, 0.80),
+    0 0 2px rgba(0, 0, 0, 0.90);
+}
+.text-glass-sm {
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.90),
+    0 0 2px rgba(0, 0, 0, 0.85);
+}
+
+/* 在液体玻璃内的文字获得额外底衬对比 */
+.liquid-glass h1, .liquid-glass h2, .liquid-glass h3,
+.liquid-glass-strong h1, .liquid-glass-strong h2, .liquid-glass-strong h3 {
+  text-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.95),
+    0 1px 4px rgba(0, 0, 0, 0.90);
+}
+
+/* =============================================================
+   iOS 按钮
+   ============================================================= */
+.btn-ios {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 16px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.70);
+  transition: all 0.15s ease;
+}
+.btn-ios:active { transform: scale(0.98); }
+.btn-ios-primary {
+  background: #007AFF;
+  color: white;
+  box-shadow: 0 2px 12px rgba(0,122,255,0.35);
+}
+.btn-ios-primary:hover {
+  background: #3385FF;
+  box-shadow: 0 4px 20px rgba(0,122,255,0.50);
+}
+.btn-ios-glass {
+  background: rgba(0,0,0,0.35);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.20);
+  border-top-color: rgba(255,255,255,0.35);
+  color: white;
+}
+
+/* =============================================================
+   滚动条
+   ============================================================= */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }

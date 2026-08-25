@@ -1,5 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { parseDouyin } = require('../parsers/douyin');
 
 // ==================== 浏览器 UA 池 ====================
 const UA_POOL = [
@@ -15,16 +16,18 @@ function randomUA() { return UA_POOL[Math.floor(Math.random() * UA_POOL.length)]
 // ==================== 平台识别（含短链） ====================
 function detectPlatform(url) {
   if (/xhslink\.(com|cn)|xiaohongshu\.com|www\.xhs\.link/i.test(url)) return 'xiaohongshu';
-  if (/douyin\.com|iesdouyin\.com|v\.douyin\.com/i.test(url)) return 'douyin';
+
   if (/weibo\.com|weibo\.cn|t\.cn/i.test(url)) return 'weibo';
+
+  if (/douyin\.com|iesdouyin\.com|v\.douyin\.com/i.test(url)) return 'douyin';
   return 'unknown';
 }
 
 // ==================== HTTP 请求 ====================
 const PLATFORM_COOKIES = {
-  douyin: 'passport_csrf_token=fake; odin_tt=1;',
   weibo: 'SUB=_2AkMR; SUBP=0033WrSXqPxfM;',
   xiaohongshu: 'a1=18; webId=abc;',
+  douyin: 'msToken=; ttwid=;',
 };
 
 async function fetchPage(url, opts = {}) {
@@ -32,7 +35,6 @@ async function fetchPage(url, opts = {}) {
   const platform = detectPlatform(url);
   const cookie = PLATFORM_COOKIES[platform] || '';
   const referer = opts.referer || {
-    douyin: 'https://www.douyin.com/',
     xiaohongshu: 'https://www.xiaohongshu.com/',
     weibo: 'https://weibo.com/',
   }[platform] || 'https://www.google.com/';
@@ -77,9 +79,40 @@ function parseXiaohongshu(html) {
   const initState = extractScriptJSON(html, 'window.__INITIAL_STATE__');
   if (initState) {
     try {
-      const noteDetail = initState?.note?.noteDetailMap
-        ? Object.values(initState.note.noteDetailMap)[0]?.note
-        : initState?.note;
+      // 注意：|| 优先级高于 ? :，必须显式分组，否则会触发 "Cannot read properties of undefined (reading 'noteDetailMap')"
+      let noteDetail;
+      if (initState?.noteData?.data?.noteData) {
+        noteDetail = initState.noteData.data.noteData;
+      } else if (initState.note?.noteDetailMap) {
+        const mapValues = Object.values(initState.note.noteDetailMap);
+        noteDetail = mapValues[0]?.note;
+      } else if (initState.noteData?.noteData) {
+        // 另一种常见结构：noteData.noteData
+        noteDetail = initState.noteData.noteData;
+      } else if (initState.note?.noteDetail) {
+        // 直接 noteDetail 对象
+        noteDetail = initState.note.noteDetail;
+      } else if (initState.currentNoteId && initState.note?.noteDetailMap?.[initState.currentNoteId]) {
+        // 通过 currentNoteId 索引
+        noteDetail = initState.note.noteDetailMap[initState.currentNoteId].note;
+      }
+
+      // 递归兜底
+      if (!noteDetail) {
+        function find(obj) {
+          if (!obj || typeof obj !== 'object') return null;
+          if (obj.imageList || obj.image_list) return obj;
+          for (const [k, v] of Object.entries(obj)) {
+            if (typeof v === 'object' && v !== null) {
+              const r = find(v);
+              if (r) return r;
+            }
+          }
+          return null;
+        }
+        noteDetail = find(initState);
+      }
+
       if (noteDetail) {
         title = noteDetail.title || noteDetail.displayTitle || '';
         description = noteDetail.desc || noteDetail.description || '';
@@ -87,8 +120,8 @@ function parseXiaohongshu(html) {
 
         const imageList = noteDetail.imageList || noteDetail.image_list || [];
         for (const img of imageList) {
-          let imgUrl = img.urlDefault || img.url_default || img.url || img.infoList?.[0]?.url || '';
-          if (imgUrl) {
+          let imgUrl = img.urlDefault || img.url_default || img.url || img.infoList?.[0]?.url || img.info_list?.[0]?.url || '';
+          if (imgUrl && !imgUrl.includes('avatar')) {
             imgUrl = imgUrl.replace(/\?.*$/, '');
             media.push({ type: 'image', url: imgUrl, thumb: imgUrl + '?imageView2/1/w/400' });
           }
@@ -99,9 +132,12 @@ function parseXiaohongshu(html) {
           const vUrl = video.consumer?.originVideoKey
             || video.media?.stream?.h264?.[0]?.masterUrl
             || video.media?.stream?.h265?.[0]?.masterUrl
+            || video.media?.video?.url
+            || video.m3u8_url
+            || video.url
             || '';
           if (vUrl) {
-            media.push({ type: 'video', url: vUrl, thumb: video.image?.firstFrameFileid || video.cover?.urlDefault || '' });
+            media.push({ type: 'video', url: vUrl, thumb: video.image?.firstFrameFileid || video.cover?.urlDefault || video.cover?.url || video.firstFrameFileid || '' });
           }
         }
       }
@@ -112,86 +148,119 @@ function parseXiaohongshu(html) {
   if (!title) title = metaContent($, 'meta[property="og:title"]');
   if (!description) description = metaContent($, 'meta[property="og:description"]') || metaContent($, 'meta[name="description"]');
 
-  // 策略3: 从 img 找 xhscdn/sns 图片
+  // 策略 2.5: 从 meta[property="og:image"] 提取封面图
   if (media.length === 0) {
+    const ogImg = metaContent($, 'meta[property="og:image"]');
+    if (ogImg) {
+      media.push({ type: 'image', url: ogImg.replace(/\?.*$/, ''), thumb: ogImg });
+    }
+  }
+
+  // 策略 2.6: 从 link[rel="preload"][as="image"] 提取图片
+  if (media.length === 0) {
+    $('link[rel="preload"][as="image"]').each((_, el) => {
+      const href = $(el).attr('href') || '';
+      if (href && (href.includes('xhscdn') || href.includes('sns-img') || href.includes('sns-webpic'))) {
+        media.push({ type: 'image', url: href.replace(/\?.*$/, ''), thumb: href });
+      }
+    });
+  }
+
+  // 策略3: 从 img 找 xhscdn/sns 图片（仅当策略1失败时）
+  // 过滤掉头像：排除 /avatar/、尺寸 < 100px 的图片
+  if (media.length === 0) {
+    // 策略3.1: 从 picture > source 标签的 srcset 提取
+    $('picture source[srcset]').each((_, el) => {
+      const srcset = $(el).attr('srcset') || '';
+      if (srcset && (srcset.includes('xhscdn') || srcset.includes('sns-img') || srcset.includes('sns-webpic'))) {
+        const firstUrl = srcset.split(',')[0]?.trim().split(' ')[0] || '';
+        if (firstUrl) {
+          media.push({ type: 'image', url: firstUrl.replace(/\?.*$/, ''), thumb: firstUrl });
+        }
+      }
+    });
+  }
+  if (media.length === 0) {
+    // 策略3.2: 从 img 标签提取（扩展 ci.xiaohongshu.com 域名）
     $('img').each((_, el) => {
       const src = $(el).attr('src') || $(el).attr('data-src') || '';
-      if (src && (src.includes('xhscdn') || src.includes('sns-img') || src.includes('sns-webpic'))) {
+      if (src && (src.includes('xhscdn') || src.includes('sns-img') || src.includes('sns-webpic') || src.includes('ci.xiaohongshu.com'))) {
+        // 排除头像
+        if (src.includes('avatar') || src.includes('/avatar/')) return;
         media.push({ type: 'image', url: src.replace(/\?.*$/, ''), thumb: src });
       }
     });
   }
 
-  return { title, description, author, media };
+  // 构建 images 数组（前端需要此字段渲染预览）
+  const images = media.filter(m => m.type === 'image').map(m => m.url);
+  const videoUrls = media.filter(m => m.type === 'video').map(m => m.url);
+  const cover = media.find(m => m.type === 'video')?.thumb || images[0] || '';
+  const type = videoUrls.length > 0 ? 'video' : (images.length > 0 ? 'image' : 'text');
+
+  return { title, description, author, media, images, cover, video: videoUrls[0] || '', type };
 }
 
-// ==================== 抖音解析 ====================
+// ==================== 微博解析 ====================
 
 /**
- * 步骤1: 解析短链 → 跟随 302 重定向 → 提取视频 ID
- * v.douyin.com/xxxxx → https://www.douyin.com/video/7123456789012345678
+ * 从微博 URL 中提取微博 ID (mid)
+ * 支持格式:
+ *   https://weibo.com/5230190006/5325419545888627  → uid=5230190006, mid=5325419545888627
+ *   https://m.weibo.cn/detail/5325419545888627       → mid=5325419545888627
+ *   https://weibo.com/5230190006/OxAbCdEfG          → 需要解码短码
+ *   https://m.weibo.cn/status/5325419545888627       → mid=5325419545888627
  */
-async function resolveDouyinShortLink(shortUrl) {
-  try {
-    const res = await axios.get(shortUrl, {
-      headers: {
-        'User-Agent': MOBILE_UA,
-        'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-      },
-      maxRedirects: 0,
-      timeout: 10000,
-      validateStatus: s => s === 301 || s === 302 || s === 307 || s === 308,
-    });
+function extractWeiboId(url) {
+  // 数字 mid（最常见格式）
+  const numMatch = url.match(/weibo\.(?:com|cn)\/\d+\/(\d{10,20})/i)
+    || url.match(/m\.weibo\.cn\/(?:detail|status)\/(\d{10,20})/i)
+    || url.match(/weibo\.com\/\d+\/(\d{10,20})/i);
+  if (numMatch) return { mid: numMatch[1] };
 
-    const location = res.headers['location'] || '';
-    console.log(`[DY] Short link resolved: ${shortUrl.slice(0, 40)} → ${location.slice(0, 60)}`);
-
-    // 从重定向 URL 提取 video ID
-    // 格式: https://www.douyin.com/video/7123456789012345678
-    //     或 https://www.douyin.com/note/7123456789012345678 (图集)
-    const idMatch = location.match(/\/(?:video|note)\/(\d+)/i)
-      || location.match(/modal_id=(\d+)/i)
-      || location.match(/video\/(\d+)/i);
-
-    if (idMatch) {
-      return { videoId: idMatch[1], redirectUrl: location };
-    }
-
-    // fallback: 尝试从路径提取任意数字ID
-    const numMatch = location.match(/(\d{15,20})/);
-    if (numMatch) {
-      return { videoId: numMatch[1], redirectUrl: location };
-    }
-
-    console.log('[DY] Could not extract video ID from:', location);
-    return null;
-  } catch (e) {
-    console.log('[DY] Short link resolution failed:', e.message);
-    return null;
+  // 短码 (如 OxAbCdEfG) — 需要 base62 解码
+  const shortMatch = url.match(/weibo\.com\/\d+\/([A-Za-z0-9]{6,10})(?:\?|$|\/)/i);
+  if (shortMatch) {
+    const mid = base62Decode(shortMatch[1]);
+    if (mid) return { mid };
   }
+
+  return null;
+}
+
+/** 微博短码 base62 → 数字 mid */
+function base62Decode(str) {
+  const table = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let result = BigInt(0);
+  for (let i = 0; i < str.length; i++) {
+    const idx = table.indexOf(str[i]);
+    if (idx === -1) return null;
+    result = result * BigInt(62) + BigInt(idx);
+  }
+  return result.toString();
 }
 
 /**
- * 步骤2: 调用抖音官方 API 获取作品详情
- * POST https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=xxx
+ * 调用微博移动端 API 获取微博详情
+ * API: GET https://m.weibo.cn/statuses/show?id={mid}
+ * 返回 JSON，无需cookie
  */
-async function fetchDouyinItemInfo(videoId) {
-  const apiUrl = `https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=${videoId}`;
+async function fetchWeiboItemInfo(mid) {
+  const apiUrl = `https://m.weibo.cn/statuses/show?id=${mid}`;
 
-  console.log(`[DY] Calling API: item_ids=${videoId}`);
+  console.log(`[WB] Calling API: mid=${mid}`);
 
   const res = await axios.get(apiUrl, {
     headers: {
       'User-Agent': MOBILE_UA,
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      'Referer': 'https://www.douyin.com/',
-      'Origin': 'https://www.douyin.com',
-      'Cookie': 'odin_tt=1; passport_csrf_token=1;',
+      'Referer': 'https://m.weibo.cn/',
+      'Origin': 'https://m.weibo.cn',
+      'X-Requested-With': 'XMLHttpRequest',
       'Sec-Fetch-Dest': 'empty',
       'Sec-Fetch-Mode': 'cors',
-      'Sec-Fetch-Site': 'same-site',
+      'Sec-Fetch-Site': 'same-origin',
     },
     timeout: 15000,
     responseType: 'json',
@@ -201,151 +270,139 @@ async function fetchDouyinItemInfo(videoId) {
 }
 
 /**
- * 步骤3: 解析 API 返回数据 → 提取标题、封面、无水印视频/图片
+ * 解析微博 API 返回的 JSON
  */
-function parseDouyinItemInfo(data) {
-  const items = data?.item_list || [];
-  if (!items.length) {
-    console.log('[DY] API returned no items');
-    return null;
-  }
+function parseWeiboItemInfo(data) {
+  // m.weibo.cn API 返回 data.data
+  const status = data?.data || data;
+  if (!status || (!status.text && !status.text_raw)) return null;
 
-  const item = items[0];
-  const title = item.desc || '';
-  const author = item.author?.nickname || '';
+  // 纯文本：去除 HTML 标签
+  const rawText = status.text_raw || status.text || '';
+  const title = rawText.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+  const author = status.user?.screen_name || '';
 
-  // 提取封面
-  const coverUrl = item.video?.cover?.url_list?.[0]
-    || item.video?.origin_cover?.url_list?.[0]
-    || '';
+  const media = [];
+  let cover = '';
+  let videoUrl = '';
+  const images = [];
 
-  const result = {
-    title,
-    description: title,
-    author,
-    cover: coverUrl,
-    video: '',
-    images: [],
-    type: 'video',
-    media: [],
-  };
-
-  // --- 视频处理 ---
-  if (item.video && item.video.play_addr) {
-    result.type = 'video';
-
-    // 无水印处理: play_addr 里的 URL 把 playwm 替换为 play
-    let videoUrl = item.video.play_addr.url_list?.[0] || '';
-    if (videoUrl) {
-      // 关键: 替换 playwm → play 获取无水印1080P直链
-      videoUrl = videoUrl.replace(/playwm/g, 'play');
-    }
-
-    // fallback: 尝试 download_addr（可能有水印）
-    if (!videoUrl) {
-      videoUrl = item.video.download_addr?.url_list?.[0] || '';
-    }
-
-    result.video = videoUrl;
-    if (videoUrl) {
-      result.media.push({ type: 'video', url: videoUrl, thumb: coverUrl });
+  // --- 图文 ---
+  const pics = status.pics || [];
+  for (const pic of pics) {
+    // 取高清原图：large.url → 替换为 mw2000
+    let imgUrl = pic.large?.url || pic.url || pic.pid || '';
+    if (imgUrl) {
+      // 将 /large/ 替换为 /mw2000/ 获取最高清无水印版本
+      imgUrl = imgUrl.replace(/\/large\//, '/mw2000/');
+      images.push(imgUrl);
+      media.push({ type: 'image', url: imgUrl, thumb: imgUrl });
     }
   }
 
-  // --- 图文处理 ---
-  const images = item.images || [];
-  if (images.length > 0) {
-    result.type = 'image';
-    for (const img of images) {
-      const imgUrl = img.url_list?.[0] || img.urlList?.[0] || '';
+  // --- 视频 ---
+  const pageInfo = status.page_info || status.pageInfo || {};
+  if (pageInfo && pageInfo.type === 'video') {
+    const mediaInfo = pageInfo.media_info || pageInfo.mediaInfo || {};
+    videoUrl = mediaInfo.mp4_hd_url
+      || mediaInfo.mp4_720p_mp4
+      || mediaInfo.stream_url_hd
+      || mediaInfo.stream_url
+      || '';
+    cover = pageInfo.page_pic?.url || pageInfo.page_pic || status.original_pic || '';
+    if (videoUrl) {
+      media.push({ type: 'video', url: videoUrl, thumb: cover });
+    }
+  }
+
+  // --- 原始图片（无pics但有original_pic） ---
+  if (images.length === 0 && status.original_pic) {
+    cover = status.original_pic;
+    images.push(status.original_pic);
+    media.push({ type: 'image', url: status.original_pic, thumb: status.original_pic });
+  }
+
+  // --- 转发的微博 ---
+  let retweetedTitle = '';
+  const retweeted = status.retweeted_status;
+  if (retweeted) {
+    retweetedTitle = (retweeted.text_raw || retweeted.text || '')
+      .replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+    // 转发微博的图片
+    const rPics = retweeted.pics || [];
+    for (const pic of rPics) {
+      let imgUrl = pic.large?.url || pic.url || pic.pid || '';
       if (imgUrl) {
-        result.images.push(imgUrl);
-        result.media.push({ type: 'image', url: imgUrl, thumb: imgUrl });
+        imgUrl = imgUrl.replace(/\/large\//, '/mw2000/');
+        images.push(imgUrl);
+        media.push({ type: 'image', url: imgUrl, thumb: imgUrl });
       }
     }
   }
 
-  return result;
+  const description = retweetedTitle
+    ? `${title}\n\n//@${retweeted.user?.screen_name || ''}: ${retweetedTitle}`
+    : title;
+
+  return {
+    title,
+    description,
+    author,
+    cover,
+    video: videoUrl,
+    images,
+    type: videoUrl ? 'video' : (images.length > 0 ? 'image' : 'text'),
+    media,
+  };
 }
 
 /**
- * 主解析入口: 综合调度
+ * 微博主解析入口
  */
-async function parseDouyin(url) {
-  console.log(`[DY] Parsing: ${url.slice(0, 80)}`);
+async function parseWeibo(url) {
+  console.log(`[WB] Parsing: ${url.slice(0, 80)}`);
 
-  let videoId = null;
-
-  // 1. 尝试直接从 URL 提取 video ID
-  const directId = url.match(/\/video\/(\d+)/i) || url.match(/\/note\/(\d+)/i);
-  if (directId) {
-    videoId = directId[1];
-    console.log(`[DY] Direct video ID from URL: ${videoId}`);
+  // 1. 提取 ID
+  const idInfo = extractWeiboId(url);
+  if (!idInfo) {
+    console.log('[WB] Could not extract Weibo ID from URL');
+    return { title: '微博', description: '无法从链接中提取微博ID', author: '', cover: '', video: '', images: [], type: 'unknown', media: [] };
   }
 
-  // 2. 如果是短链，先解析重定向
-  if (!videoId && /v\.douyin\.com/i.test(url)) {
-    const resolved = await resolveDouyinShortLink(url);
-    if (resolved) {
-      videoId = resolved.videoId;
-      url = resolved.redirectUrl; // 更新为实际 URL
-    }
-  }
+  console.log(`[WB] Extracted mid: ${idInfo.mid}`);
 
-  // 3. 如果是 HTML 页面（非短链），尝试从页面内容提取 ID
-  if (!videoId) {
-    try {
-      const { html } = await fetchPage(url, { mobile: true });
-      // 从 HTML 中搜 video ID
-      const idMatch = html.match(/video\/(\d{15,20})/i) || html.match(/"item_id"\s*:\s*"?(\d{15,20})/i);
-      if (idMatch) {
-        videoId = idMatch[1];
-        console.log(`[DY] Video ID extracted from HTML: ${videoId}`);
-      }
-    } catch (e) {
-      console.log('[DY] HTML fetch for ID extraction failed:', e.message);
-    }
-  }
-
-  // 4. 调用 API 获取数据
-  if (videoId) {
-    try {
-      const apiData = await fetchDouyinItemInfo(videoId);
-      const result = parseDouyinItemInfo(apiData);
-      if (result) return result;
-    } catch (e) {
-      console.log('[DY] API call failed:', e.message);
-    }
-  }
-
-  // 5. fallback: 用页面 HTML 的 OG 标签兜底
+  // 2. 调用移动端 API
   try {
-    const { html } = await fetchPage(url, { mobile: true });
-    const $ = cheerio.load(html);
-    const title = metaContent($, 'meta[property="og:title"]') || $('title').text().trim() || '';
-    const description = metaContent($, 'meta[property="og:description"]') || metaContent($, 'meta[name="description"]') || '';
-    const ogImg = metaContent($, 'meta[property="og:image"]');
-    const media = [];
-    if (ogImg) media.push({ type: 'image', url: ogImg, thumb: ogImg });
-
-    return {
-      title,
-      description,
-      author: '',
-      cover: ogImg,
-      video: '',
-      images: ogImg ? [ogImg] : [],
-      type: 'unknown',
-      media,
-    };
+    const apiData = await fetchWeiboItemInfo(idInfo.mid);
+    const result = parseWeiboItemInfo(apiData);
+    if (result) return result;
   } catch (e) {
-    console.log('[DY] Fallback failed:', e.message);
+    console.log('[WB] API call failed:', e.message);
   }
 
-  // 6. 彻底失败
+  // 3. fallback: 尝试 PC 端 Ajax API
+  try {
+    const pcUrl = `https://weibo.com/ajax/statuses/show?id=${idInfo.mid}`;
+    console.log(`[WB] Trying PC API: ${pcUrl.slice(0, 60)}...`);
+    const res = await axios.get(pcUrl, {
+      headers: {
+        'User-Agent': MOBILE_UA,
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': 'https://weibo.com/',
+        'Cookie': 'SUB=_2AkMR; SUBP=0033WrSXqPxfM;',
+      },
+      timeout: 10000,
+      responseType: 'json',
+    });
+    const result = parseWeiboItemInfo(res.data);
+    if (result) return result;
+  } catch (e) {
+    console.log('[WB] PC API also failed:', e.message);
+  }
+
   return {
-    title: '抖音视频',
-    description: '无法获取内容（平台可能限制了访问，请尝试复制纯链接）',
+    title: '微博',
+    description: '获取内容失败，微博可能限制了访问。请确认链接无误后重试。',
     author: '',
     cover: '',
     video: '',
@@ -353,68 +410,6 @@ async function parseDouyin(url) {
     type: 'unknown',
     media: [],
   };
-}
-
-// ==================== 微博解析 ====================
-function parseWeibo(html) {
-  const $ = cheerio.load(html);
-  const media = [];
-  let title = '', description = '', author = '';
-
-  // 策略1: $render_data
-  const renderData = extractScriptJSON(html, '$render_data');
-  if (renderData) {
-    try {
-      const status = renderData.status || renderData;
-      title = (status.text_raw || status.text || '').replace(/<[^>]+>/g, '');
-      description = title;
-      author = status.user?.screen_name || '';
-
-      const pics = status.pics || status.pic_ids || [];
-      for (const pic of pics) {
-        const picUrl = typeof pic === 'string' ? pic : (pic.large?.url || pic.url || pic.pid || '');
-        if (picUrl) media.push({ type: 'image', url: picUrl, thumb: picUrl });
-      }
-
-      const pageInfo = status.page_info || status.pageInfo || {};
-      const vidUrl = pageInfo.media_info?.stream_url_hd
-        || pageInfo.media_info?.stream_url
-        || pageInfo.media_info?.mp4_720p_mp4
-        || '';
-      if (vidUrl) {
-        media.push({ type: 'video', url: vidUrl, thumb: pageInfo.page_pic?.url || pageInfo.page_pic || '' });
-      }
-    } catch (e) { console.log('[WB] render_data error:', e.message); }
-  }
-
-  // 策略2: 直接从 HTML 正则匹配 sinaimg.cn 图片
-  if (media.length === 0) {
-    const re = /https?:\/\/[a-zA-Z0-9.-]+\.sinaimg\.cn\/(large|mw\d+|orj\/[a-zA-Z0-9]+)\/[a-zA-Z0-9]+\.[a-z]+/gi;
-    const matches = html.match(re) || [];
-    for (const u of matches) {
-      if (!media.find(m => m.url === u)) {
-        media.push({ type: 'image', url: u, thumb: u });
-      }
-    }
-  }
-
-  // 策略3: OG / meta
-  if (!title) title = metaContent($, 'meta[property="og:title"]') || $('title').text().trim();
-  if (!description) {
-    description = metaContent($, 'meta[property="og:description"]')
-      || metaContent($, 'meta[name="description"]')
-      || title;
-  }
-
-  // 策略4: img[src*="sinaimg"]
-  if (media.length === 0) {
-    $('img[src*="sinaimg"]').each((_, el) => {
-      const src = $(el).attr('src') || '';
-      if (src && !src.includes('icon')) media.push({ type: 'image', url: src, thumb: src });
-    });
-  }
-
-  return { title, description, author, media };
 }
 
 // ==================== 通用解析 ====================
@@ -494,21 +489,44 @@ function extractScriptJSON(html, key, matchBy = 'content') {
     if (match) { try { return JSON.parse(match[1]); } catch {} }
     return null;
   }
+
+  // 定位 key 的起始位置（优先精确匹配 `key = {` 模式）
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const patterns = [
-    new RegExp(`${escapedKey}\\s*=\\s*(\\{[\\s\\S]*?\\});`, 'i'),
-    new RegExp(`${escapedKey}\\s*:\\s*(\\{[\\s\\S]*?\\})\\s*[,;\\n]`, 'i'),
-    new RegExp(`${escapedKey}\\s*=\\s*(\\{[\\s\\S]*?\\})\\s*<`, 'i'),
-    new RegExp(`${escapedKey}\\s*=\\s*(\\{[\\s\\S]*?\\})\\s*</script>`, 'i'),
-  ];
-  for (const p of patterns) {
-    const m = html.match(p);
-    if (m) { try { return JSON.parse(m[1]); } catch {} }
+  // 查找最后一次出现的 key（通常最后一个是真实赋值）
+  const keyRegex = new RegExp(`${escapedKey}\\s*=\\s*`, 'gi');
+  let keyMatch, lastMatch;
+  while ((keyMatch = keyRegex.exec(html)) !== null) { lastMatch = keyMatch; }
+  if (!lastMatch) return null;
+
+  const startIdx = lastMatch.index + lastMatch[0].length;
+  const char = html[startIdx];
+  if (char !== '{' && char !== '[') return null;
+
+  // 括号计数法提取完整嵌套 JSON
+  const openChar = char;
+  const closeChar = openChar === '{' ? '}' : ']';
+  let depth = 0, inString = false, escape = false;
+  for (let i = startIdx; i < html.length; i++) {
+    const c = html[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\') { escape = true; continue; }
+    if (c === '"' || c === "'") { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === openChar) depth++;
+    else if (c === closeChar) {
+      depth--;
+      if (depth === 0) {
+        const jsonStr = html.slice(startIdx, i + 1);
+        // 清理 JS 字面量（undefined → null）
+        const clean = jsonStr.replace(/\bundefined\b/g, 'null');
+        try { return JSON.parse(clean); } catch { return null; }
+      }
+    }
   }
   return null;
 }
 
-// ==================== URL 提取（修复版：中文标点边界） ====================
+// ==================== URL 提取 ====================
 function extractUrls(text) {
   if (!text) return [];
 
@@ -517,23 +535,22 @@ function extractUrls(text) {
   // 去掉反引号包裹
   text = text.replace(/`([^`]*https?:\/\/[^`]*)`/g, '$1');
 
-  // URL 字符集：在以下字符处停止匹配
-  // 英文标点: < > " { } | \ ^ ` [ ]
-  // 中文标点: 【 】 《 》 「 」 （ ） ｛ ｝ ， 。 ！ ？ ； ： 、 " " ' '
-  const stopChars = '\\s<>"{}|\\\\^`\\[\\]' +
-    '\u3000-\u303F\uFF00-\uFFEF\u2018\u2019\u201C\u201D\u2014\u2026' +
-    '\u3001\u3002\uFF0C\uFF0E\uFF1B\uFF1A\uFF1F\uFF01' +
-    '\u300A\u300B\u3008\u3009\u3010\u3011' +
-    '\uFF08\uFF09\uFF3B\uFF3D\uFF5B\uFF5D' +
-    '\u2018\u2019\u201C\u201D';
-  const re = new RegExp(`https?://[^${stopChars}]+`, 'gi');
+  // 核心正则：匹配 http(s):// 开头，遇到空白或中文字符时停止
+  const re = /https?:\/\/[^\s\u4e00-\u9fa5]+/gi;
   const matches = text.match(re);
   if (!matches) return [];
 
-  // 清理尾部标点
-  return matches.map(u =>
-    u.replace(/[.,;!?)〉》】〉》'"\uFF0C\u3001\u3002\uFF1B\uFF01\uFF1F\uFF09\u3009\u300B\u300D\u3011\uFF3D\uFF5D]+$/, '')
-  );
+  // 清理尾部标点/括号/引号（JSON 结尾、Markdown 链接等）
+  // 多轮清理，直到没有可去掉的尾部字符为止
+  const dirtyChars = /[.,;!?)\]}>"'\uFF0C\u3001\u3002\uFF1B\uFF01\uFF1F\uFF09\u3009\u300B\u300D\u3011\uFF3D\uFF5D]+$/;
+  return matches.map(u => {
+    let prev;
+    do {
+      prev = u;
+      u = u.replace(dirtyChars, '');
+    } while (u !== prev);
+    return u;
+  });
 }
 
 // ==================== Express Router ====================
@@ -546,6 +563,7 @@ router.post('/parse', async (req, res) => {
     const extracted = extractUrls(bodyStr);
     if (!extracted.length) {
       return res.status(400).json({
+        code: 400,
         success: false,
         error: '未检测到有效网址，请粘贴包含 http:// 或 https:// 的链接',
       });
@@ -564,12 +582,16 @@ router.post('/parse', async (req, res) => {
     let result;
     switch (platform) {
       case 'xiaohongshu': result = parseXiaohongshu(html); break;
+      case 'weibo':
+        // 微博走独立异步流程（移动端 API 调用）
+        result = await parseWeibo(url);
+        break;
       case 'douyin':
-        // 抖音走独立异步流程（短链追踪 + API 调用）
+        // 抖音 Playwright 解析（绕过 WAF）
         result = await parseDouyin(url);
         break;
-      case 'weibo':      result = parseWeibo(html); break;
-      default:           result = parseGeneric(html);
+      
+            default:           result = parseGeneric(html);
     }
 
     // 兼容旧格式：确保 media 存在
@@ -580,6 +602,7 @@ router.post('/parse', async (req, res) => {
 
     // 构建响应：包含平台专用字段 (cover, video, images, type)
     res.json({
+      code: 200,
       success: true,
       platform,
       url,
@@ -597,6 +620,7 @@ router.post('/parse', async (req, res) => {
   } catch (err) {
     console.error('[Parse Error]', err.message);
     res.status(502).json({
+      code: 400,
       success: false,
       error: '请求目标网址失败，请确认链接有效且可公开访问',
       message: err.message,
@@ -605,7 +629,7 @@ router.post('/parse', async (req, res) => {
 });
 
 function platformLabel(p) {
-  const map = { xiaohongshu: '小红书', douyin: '抖音', weibo: '微博', unknown: '网页' };
+  const map = { xiaohongshu: '小红书', weibo: '微博', douyin: '抖音', unknown: '网页' };
   return map[p] || '网页';
 }
 
@@ -613,4 +637,77 @@ router.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// ==================== 图片代理（解决微博等图床防盗链 403） ====================
+router.get('/proxy-image', async (req, res) => {
+  try {
+    const imageUrl = req.query.url;
+    if (!imageUrl || !imageUrl.startsWith('http')) {
+      return res.status(400).json({ error: '缺少 url 参数' });
+    }
+
+    // 只允许已知图床域名
+    const allowed = ['sinaimg.cn', 'weibocdn.com', 'xhscdn.com', 'douyinpic.com', 'douyincdn.com', 'douyinvod.com', 'pstatp.com', 'bytedance.com', 'zjcdn.com', 'bytecdn.com', 'douyinstatic.com', 'ixigua.com', 'bytednsdoc.com', 'ibyteimg.com'];
+    const host = new URL(imageUrl).hostname;
+    if (!allowed.some(d => host.includes(d))) {
+      return res.status(403).json({ error: '不支持的图片域名' });
+    }
+
+    console.log(`[ProxyImg] ${imageUrl.slice(0, 80)}`);
+
+    const imgRes = await axios.get(imageUrl, {
+      headers: {
+        'User-Agent': MOBILE_UA,
+        'Referer': { 'sinaimg.cn': 'https://weibo.com/', 'xhscdn.com': 'https://www.xiaohongshu.com/' }[host.split('.').slice(-2).join('.')] || '',
+      },
+      responseType: 'arraybuffer',
+      timeout: 20000,
+      validateStatus: s => s < 500,
+    });
+
+    const ct = imgRes.headers['content-type'] || 'image/jpeg';
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(Buffer.from(imgRes.data));
+  } catch (e) {
+    console.error('[ProxyImg Error]', e.message);
+    res.status(502).json({ error: '图片代理失败' });
+  }
+});
+
+// ==================== 视频代理（解决微博视频防盗链 403） ====================
+router.get('/proxy-video', async (req, res) => {
+  try {
+    const videoUrl = req.query.url;
+    if (!videoUrl || !videoUrl.startsWith('http')) {
+      return res.status(400).json({ error: '缺少 url 参数' });
+    }
+
+    console.log(`[ProxyVideo] ${videoUrl.slice(0, 80)}`);
+
+    const imgRes = await axios.get(videoUrl, {
+      headers: {
+        'User-Agent': MOBILE_UA,
+        'Referer': 'https://weibo.com/',
+      },
+      responseType: 'stream',
+      timeout: 60000,
+      validateStatus: s => s < 500,
+    });
+
+    const ct = imgRes.headers['content-type'] || 'video/mp4';
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Content-Disposition', 'attachment; filename="video.mp4"');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    imgRes.data.pipe(res);
+  } catch (e) {
+    console.error('[ProxyVideo Error]', e.message);
+    res.status(502).json({ error: '视频代理失败' });
+  }
+});
+
+// ==================== AI 抠图（已迁移至 remove-bg.js 独立模块） ====================
+
 module.exports = router;
+
+
