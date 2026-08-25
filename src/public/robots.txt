@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://prohub.example.com/sitemap.xml
+
+# 禁止爬取 API 接口
+Disallow: /api/*
