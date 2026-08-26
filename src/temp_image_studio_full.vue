@@ -124,13 +124,7 @@
 
           <div v-else-if="activeTab === 'privacy'" class="space-y-4">
             <div>
-              <div class="flex items-center gap-2">
-                <h2 class="text-sm font-semibold text-white text-glass">隐私水印与打码</h2>
-                <span class="relative inline-flex group">
-                  <button type="button" class="w-4 h-4 rounded-full border border-white/30 text-[0.625rem] text-zinc-300 leading-none hover:text-white hover:border-white/70" aria-label="盲水印说明">?</button>
-                  <span role="tooltip" class="pointer-events-none absolute left-6 top-1/2 z-[80] w-64 -translate-y-1/2 rounded-xl bg-zinc-950/95 px-3 py-2 text-[0.6875rem] leading-relaxed text-zinc-200 opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">盲水印会把半透明的斜向文字平铺写入导出图片；遮罩支持马赛克、黑色/白色遮盖与柔焦模糊，每个遮罩独立记录自己的方式。</span>
-                </span>
-              </div>
+              <h2 class="text-sm font-semibold text-white text-glass">隐私水印与打码</h2>
               <p class="text-[0.6875rem] text-zinc-500 mt-1">在预览图上拖拽矩形，导出时按物理像素映射。</p>
             </div>
             <label class="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer"><input v-model="watermarkEnabled" type="checkbox" class="accent-[#007AFF]" />启用盲水印</label>
@@ -141,16 +135,10 @@
               <select v-model="maskStyle" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white bg-transparent outline-none">
                 <option value="mosaic">马赛克</option>
                 <option value="black">黑色遮盖</option>
-                <option value="white">白色遮盖</option>
-                <option value="blur">柔焦模糊</option>
               </select>
             </label>
             <div class="rounded-xl liquid-glass-inset p-3 text-[0.6875rem] text-zinc-400">动态块大小：{{ dynamicMosaicBlock }} px · 已添加 {{ masks.length }} 个遮罩</div>
-            <div class="grid grid-cols-3 gap-2">
-              <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!undoStack.length" @click="undoMask">撤销</button>
-              <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!redoStack.length" @click="redoMask">重做</button>
-              <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!masks.length" @click="clearMasks">清除全部</button>
-            </div>
+            <button type="button" class="w-full rounded-xl liquid-glass-inset px-3 py-2 text-xs text-zinc-300 hover:text-white" @click="masks = []">清除全部遮罩</button>
           </div>
 
           <div v-else-if="activeTab === 'convert'" class="space-y-4">
@@ -163,7 +151,6 @@
                 <option value="image/jpeg">JPG</option>
                 <option value="image/png">PNG</option>
                 <option value="image/webp">WebP</option>
-                <option value="image/avif">AVIF（需浏览器支持）</option>
               </select>
             </label>
             <label v-if="outputFormat !== 'image/png'" class="block text-xs text-zinc-400">质量 {{ Math.round(outputQuality * 100) }}%
@@ -230,16 +217,6 @@
               <p v-else class="text-zinc-500">等待处理</p>
             </div>
           </div>
-
-          <div v-if="exifEntries.length" class="mt-4 rounded-[16px] liquid-glass-inset p-3 text-xs">
-            <p class="text-zinc-500 mb-2">EXIF 信息</p>
-            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
-              <div v-for="[label, value] in exifEntries" :key="label" class="flex justify-between gap-3">
-                <dt class="text-zinc-500 shrink-0">{{ label }}</dt>
-                <dd class="text-white text-right break-all">{{ value }}</dd>
-              </div>
-            </dl>
-          </div>
         </section>
 
         <section v-if="activeTab === 'compose'" class="liquid-glass p-4 sm:p-5">
@@ -270,18 +247,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useHead } from '@vueuse/head';
-
 import JSZip from 'jszip';
 import { IconDownload, IconPhoto } from '@tabler/icons-vue';
 import BreadcrumbNav from '../../components/BreadcrumbNav.vue';
 
 type StudioTab = 'compress' | 'resize' | 'privacy' | 'convert' | 'compose';
-type MaskStyle = 'mosaic' | 'black' | 'white' | 'blur';
+type MaskStyle = 'mosaic' | 'black';
 type ComposeDirection = 'vertical' | 'horizontal';
 
 interface Point { x: number; y: number }
 interface Rect { x: number; y: number; width: number; height: number }
-interface Mask { rect: Rect; style: MaskStyle }
 interface Preset { id: string; label: string; width: number; height: number }
 interface StudioImage {
   id: string;
@@ -292,7 +267,6 @@ interface StudioImage {
   naturalWidth: number;
   naturalHeight: number;
   element: HTMLImageElement;
-  exif: Record<string, any> | null;
 }
 interface GridTile { id: string; name: string; blob: Blob; url: string }
 
@@ -336,9 +310,7 @@ const outputQuality = ref(0.92);
 const composeDirection = ref<ComposeDirection>('vertical');
 const cropRect = ref<Rect | null>(null);
 const temporaryCropRect = ref<Rect | null>(null);
-const masks = ref<Mask[]>([]);
-const undoStack = ref<Mask[][]>([]);
-const redoStack = ref<Mask[][]>([]);
+const masks = ref<Rect[]>([]);
 const temporaryMaskRect = ref<Rect | null>(null);
 const dragStart = ref<Point | null>(null);
 const interactionMode = ref<'crop' | 'mask' | null>(null);
@@ -355,20 +327,6 @@ const primaryActionLabel = computed(() => activeTab.value === 'compress' ? '压�
 const sizeDeltaLabel = computed(() => {
   if (!currentImage.value || !processedBlob.value) return '';
   return `${Math.round(processedBlob.value.size / currentImage.value.size * 100)}%`;
-});
-const exifEntries = computed(() => {
-  const exifData = currentImage.value?.exif;
-  if (!exifData) return [];
-  const entries: Array<[string, string]> = [];
-  if (exifData.DateTimeOriginal) entries.push(['拍摄时间', new Date(exifData.DateTimeOriginal).toLocaleString('zh-CN')]);
-  const camera = [exifData.Make, exifData.Model].filter(Boolean).join(' ');
-  if (camera) entries.push(['相机', camera]);
-  if (exifData.ExposureTime) entries.push(['曝光时间', `${exifData.ExposureTime}s`]);
-  if (exifData.FNumber) entries.push(['光圈', `f/${exifData.FNumber}`]);
-  if (exifData.ISO) entries.push(['ISO', String(exifData.ISO)]);
-  if (exifData.FocalLength) entries.push(['焦距', `${exifData.FocalLength}mm`]);
-  if (typeof exifData.GPSLatitude === 'number' && typeof exifData.GPSLongitude === 'number') entries.push(['GPS', `${exifData.GPSLatitude.toFixed(4)}, ${exifData.GPSLongitude.toFixed(4)}`]);
-  return entries;
 });
 
 function createId(): string {
@@ -439,8 +397,6 @@ function initializeImageState(): void {
   resetProcessingState();
   clearGridTiles();
   masks.value = [];
-  undoStack.value = [];
-  redoStack.value = [];
   temporaryMaskRect.value = null;
   temporaryCropRect.value = null;
   cropRect.value = image ? fullImageRect() : null;
@@ -491,14 +447,6 @@ async function decodeImageFile(file: File): Promise<StudioImage> {
     element.onload = () => resolve();
     element.onerror = () => reject(new Error(`${file.name} 无法读取`));
   });
-  let exifData: Record<string, any> | null = null;
-  try {
-    const exifModule = await import('exifr');
-    const parsed = await exifModule.parse(file, { tiff: true, exif: true, gps: true });
-    if (parsed) exifData = parsed;
-  } catch {
-    exifData = null;
-  }
   return {
     id: createId(),
     file,
@@ -508,7 +456,6 @@ async function decodeImageFile(file: File): Promise<StudioImage> {
     naturalWidth: element.naturalWidth,
     naturalHeight: element.naturalHeight,
     element,
-    exif: exifData,
   };
 }
 
@@ -637,11 +584,7 @@ function onPreviewPointerMove(event: PointerEvent): void {
 
 function onPreviewPointerUp(): void {
   if (interactionMode.value === 'crop' && temporaryCropRect.value && temporaryCropRect.value.width > 2 && temporaryCropRect.value.height > 2) cropRect.value = temporaryCropRect.value;
-  if (interactionMode.value === 'mask' && temporaryMaskRect.value && temporaryMaskRect.value.width > 2 && temporaryMaskRect.value.height > 2) {
-    undoStack.value.push(cloneMasks(masks.value));
-    masks.value.push({ rect: temporaryMaskRect.value, style: maskStyle.value });
-    redoStack.value = [];
-  }
+  if (interactionMode.value === 'mask' && temporaryMaskRect.value && temporaryMaskRect.value.width > 2 && temporaryMaskRect.value.height > 2) masks.value.push(temporaryMaskRect.value);
   temporaryCropRect.value = null;
   temporaryMaskRect.value = null;
   dragStart.value = null;
@@ -649,20 +592,14 @@ function onPreviewPointerUp(): void {
   drawPreview();
 }
 
-function maskOverlayFill(style: MaskStyle): string {
-  if (style === 'black') return 'rgba(0,0,0,0.82)';
-  if (style === 'white') return 'rgba(255,255,255,0.85)';
-  if (style === 'blur') return 'rgba(120,160,255,0.3)';
-  return 'rgba(20,20,20,0.58)';
-}
-function drawMaskOverlay(context: CanvasRenderingContext2D, mask: Mask, temporary = false): void {
+function drawMaskOverlay(context: CanvasRenderingContext2D, rect: Rect, temporary = false): void {
   context.save();
-  context.fillStyle = maskOverlayFill(mask.style);
-  context.fillRect(mask.rect.x, mask.rect.y, mask.rect.width, mask.rect.height);
+  context.fillStyle = maskStyle.value === 'black' ? 'rgba(0,0,0,0.82)' : 'rgba(20,20,20,0.58)';
+  context.fillRect(rect.x, rect.y, rect.width, rect.height);
   context.strokeStyle = temporary ? '#007AFF' : 'rgba(255,255,255,0.8)';
-  context.lineWidth = Math.max(2, Math.round(Math.max(mask.rect.width, mask.rect.height) / 300));
+  context.lineWidth = Math.max(2, Math.round(Math.max(rect.width, rect.height) / 300));
   context.setLineDash(temporary ? [8, 8] : []);
-  context.strokeRect(mask.rect.x, mask.rect.y, mask.rect.width, mask.rect.height);
+  context.strokeRect(rect.x, rect.y, rect.width, rect.height);
   context.restore();
 }
 
@@ -701,7 +638,7 @@ function drawPreview(): void {
   context.drawImage(image.element, 0, 0, image.naturalWidth, image.naturalHeight);
   if (activeTab.value === 'privacy') {
     masks.value.forEach((mask) => drawMaskOverlay(context, mask));
-    if (temporaryMaskRect.value) drawMaskOverlay(context, { rect: temporaryMaskRect.value, style: maskStyle.value }, true);
+    if (temporaryMaskRect.value) drawMaskOverlay(context, temporaryMaskRect.value, true);
     drawWatermark(context, canvas.width, canvas.height);
   }
   if (activeTab.value === 'resize') {
@@ -749,29 +686,15 @@ function drawMosaic(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement
   context.restore();
 }
 
-function drawBlur(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, rect: Rect): void {
-  const radius = Math.max(2, Math.round(Math.min(rect.width, rect.height) / 30));
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = Math.max(1, Math.round(rect.width));
-  tempCanvas.height = Math.max(1, Math.round(rect.height));
-  const tempContext = tempCanvas.getContext('2d');
-  if (!tempContext) return;
-  tempContext.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, tempCanvas.width, tempCanvas.height);
-  context.save();
-  context.filter = `blur(${radius}px)`;
-  context.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, rect.x, rect.y, rect.width, rect.height);
-  context.restore();
-}
-
 function applyMasksAndWatermark(canvas: HTMLCanvasElement, sourceCrop: Rect): void {
   const context = canvas.getContext('2d');
   const image = currentImage.value;
   if (!context || !image || activeTab.value !== 'privacy') return;
   masks.value.forEach((mask) => {
-    const intersectionLeft = Math.max(mask.rect.x, sourceCrop.x);
-    const intersectionTop = Math.max(mask.rect.y, sourceCrop.y);
-    const intersectionRight = Math.min(mask.rect.x + mask.rect.width, sourceCrop.x + sourceCrop.width);
-    const intersectionBottom = Math.min(mask.rect.y + mask.rect.height, sourceCrop.y + sourceCrop.height);
+    const intersectionLeft = Math.max(mask.x, sourceCrop.x);
+    const intersectionTop = Math.max(mask.y, sourceCrop.y);
+    const intersectionRight = Math.min(mask.x + mask.width, sourceCrop.x + sourceCrop.width);
+    const intersectionBottom = Math.min(mask.y + mask.height, sourceCrop.y + sourceCrop.height);
     if (intersectionRight <= intersectionLeft || intersectionBottom <= intersectionTop) return;
     const outputRect: Rect = {
       x: (intersectionLeft - sourceCrop.x) * canvas.width / sourceCrop.width,
@@ -779,14 +702,9 @@ function applyMasksAndWatermark(canvas: HTMLCanvasElement, sourceCrop: Rect): vo
       width: (intersectionRight - intersectionLeft) * canvas.width / sourceCrop.width,
       height: (intersectionBottom - intersectionTop) * canvas.height / sourceCrop.height,
     };
-    if (mask.style === 'black') {
+    if (maskStyle.value === 'black') {
       context.fillStyle = '#000';
       context.fillRect(outputRect.x, outputRect.y, outputRect.width, outputRect.height);
-    } else if (mask.style === 'white') {
-      context.fillStyle = '#fff';
-      context.fillRect(outputRect.x, outputRect.y, outputRect.width, outputRect.height);
-    } else if (mask.style === 'blur') {
-      drawBlur(context, canvas, outputRect);
     } else drawMosaic(context, canvas, outputRect);
   });
   drawWatermark(context, canvas.width, canvas.height);
@@ -923,10 +841,7 @@ async function runPrimaryAction(): Promise<void> {
 }
 
 function extensionForMime(mime: string): string {
-  if (mime === 'image/png') return 'png';
-  if (mime === 'image/webp') return 'webp';
-  if (mime === 'image/avif') return 'avif';
-  return 'jpg';
+  return mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
 }
 
 function downloadBlob(blob: Blob, fileName: string): void {
@@ -953,24 +868,6 @@ async function downloadGridZip(): Promise<void> {
   gridTiles.value.forEach((tile) => zip.file(tile.name, tile.blob));
   const blob = await zip.generateAsync({ type: 'blob' });
   downloadBlob(blob, `prohub-nine-grid-${Date.now()}.zip`);
-}
-
-function cloneMasks(source: Mask[]): Mask[] {
-  return source.map((m) => ({ rect: { ...m.rect }, style: m.style }));
-}
-function undoMask(): void {
-  const prev = undoStack.value.pop();
-  if (prev) { redoStack.value.push(cloneMasks(masks.value)); masks.value = prev; nextTick(drawPreview); }
-}
-function redoMask(): void {
-  const next = redoStack.value.pop();
-  if (next) { undoStack.value.push(cloneMasks(masks.value)); masks.value = next; nextTick(drawPreview); }
-}
-function clearMasks(): void {
-  undoStack.value.push(cloneMasks(masks.value));
-  masks.value = [];
-  redoStack.value = [];
-  nextTick(drawPreview);
 }
 
 watch(() => currentImage.value?.id, initializeImageState);

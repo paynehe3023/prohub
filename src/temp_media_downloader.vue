@@ -7,7 +7,7 @@
       <label class="block text-[0.8125rem] font-medium text-zinc-200 mb-2.5 tracking-[-0.01em] text-glass">粘贴分享链接</label>
       <div class="flex flex-col sm:flex-row gap-2.5">
         <input ref="inputRef" v-model="inputUrl" @keyup.enter="handleParse"
-          placeholder="粘贴小红书/抖音/微博分享链接..."
+          placeholder="粘贴小红书/微博分享链接..."
           class="flex-1 px-4 py-3 liquid-glass-inset text-white placeholder:text-zinc-500 text-[0.9375rem] tracking-[-0.01em] focus:ring-2 focus:ring-ios-blue/30 outline-none transition-all" />
         <button @click="handleParse" :disabled="loading || !inputUrl.trim()"
           class="shrink-0 btn-ios btn-ios-primary disabled:opacity-30 disabled:cursor-not-allowed disabled:scale-100">
@@ -201,7 +201,6 @@ async function downloadAll() {
   }
 }
 </script>
-
 
 
 
