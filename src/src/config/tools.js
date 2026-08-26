@@ -58,6 +58,17 @@ export const tools = [
     keywords: ['JSON', '格式化', 'Base64', '正则', 'Markdown'],
   },
   {
+    id: 'media-studio',
+    title: '自媒体创作安全工作台',
+    desc: '灵感收集 + DeepSeek AI 润色 + 违禁词清洗 + 防折叠实机预览 + 多平台分发',
+    category: '媒体/去水印',
+    icon: 'IconSparkles',
+    route: '/tools/media-studio',
+    status: 'online',
+    isNew: true,
+    keywords: ['自媒体', '小红书', '抖音', '公众号', 'AI润色', 'DeepSeek', '违禁词', '排版预览'],
+  },
+  {
     id: 'image-compress',
     title: '全能极速图片处理工作台',
     desc: '纯前端图片压缩、裁剪、水印、格式转换、拼长图与九宫格',

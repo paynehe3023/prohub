@@ -709,3 +709,23 @@ ps1 -StopDev`
 7. **实时遮罩效果**：`drawMaskOverlay` 预览时对马赛克、柔焦模糊、黑白遮盖均使用真实效果绘制（`drawMosaic`/`drawBlur`/`fillRect`），绘制时即可看到实际效果而非半透明占位色块。
 8. **撤回/重做按钮**：按钮文案改为 `← 撤回` / `重做 →`，交互更直观。
 9. **社交平台解析提示**：MediaDownloader 支持标签增加抖音 badge（`bg-ios-blue/20 text-ios-blue`）。
+
+## 二十五、自媒体全流程创作与安全工作台（MediaStudio）
+
+- 新增纯前端路由 `/tools/media-studio`，组件 `src/src/views/tools/MediaStudio.vue`，入口已加入首页工具清单（`src/src/config/tools.js`），替换可用的在线状态卡片。
+- 五大工作流 Tab：灵感素材（📥）/ AI 润色（✨）/ 合规清洗（🛡️）/ 实机预览（📱）/ 多平台分发（🚀）。
+
+### 二十五.1 功能清单（当前版本）
+
+1. **灵感与素材中转站**：速记文本卡片 + `#选题 / #爆款开头 / #对标案例 / #金句` 标签分类；支持引用素材到共享创作区、一键批量引用、从剪贴板读取。
+2. **DeepSeek AI 润色与脚本创作**：API Key 仅存 LocalStorage，前端直连 `https://api.deepseek.com/v1`，模型 `deepseek-chat`，流式打字机输出；4 种模式：小红书种草风 / 短视频黄金 3 秒脚本 / 爆款标题 5 连发 / 查重与对标重写（双栏 + N-Gram 相似度）。
+3. **违禁词与合规安全清洗**：内置 28 条基础敏感词 + `onMounted` 静默请求 `GET /api/forbidden-words` 热更新合并；草稿实时扫描并红字高亮，悬停显示平替建议，支持单条/一键全部替换；支持自定义违禁词（`词|平替` 格式）。
+4. **防折叠排版与 1:1 实机预览**：一键插入零宽空格（U+200B）打断长文折叠；切换小红书双列卡片 / 公众号消息列表 / 抖音推荐页模拟预览，实时检测标题截断。
+5. **一键多平台格式适配导出**：小红书版（纯文本 + Emoji + 底部标签）、公众号版（带排版的富文本 HTML）、知乎/头条版（Markdown），一键复制。
+
+### 二十五.2 后端与验证记录
+
+- 后端新增 `server/routes/forbidden-words.js` 违禁词库接口，内置 45 条敏感词（含平台维度与平替建议），已在 `server/index.js` 注册 `/api/forbidden-words`。
+- `env.d.ts` 补充 `@tabler/icons-vue` 与 `piexifjs` 模块类型声明，避免 IDE 红波浪线。
+- 验证结果：`npm run build` 通过，`MediaStudio` 独立分包 27.29 kB（gzip 11.02 kB）；后端路由语法检查通过。
+- 注意：AI 润色需要用户自行配置 DeepSeek API Key（页面内输入，仅存浏览器 LocalStorage）。

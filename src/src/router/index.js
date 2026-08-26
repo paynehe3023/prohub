@@ -62,6 +62,16 @@ const routes = [
       keywords: '图片压缩,图片裁剪,水印,打码,格式转换,长图,九宫格,HEIC,WebP',
     },
   },
+  {
+    path: '/tools/media-studio',
+    name: 'MediaStudio',
+    component: () => import('../views/tools/MediaStudio.vue'),
+    meta: {
+      title: '自媒体全流程创作与安全工作台 - proHub',
+      description: '自媒体全链路工具：灵感素材收集、DeepSeek AI 润色、违禁词合规清洗、防折叠实机预览与多平台格式分发。',
+      keywords: '自媒体,小红书,抖音,公众号,AI润色,DeepSeek,违禁词,全网发布',
+    },
+  },
   // 预留路由
   {
     path: '/tools/coming-soon',

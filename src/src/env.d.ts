@@ -33,6 +33,27 @@ declare module '@tabler/icons-vue' {
   export const IconShieldCheck: IconComponent
   export const IconBolt: IconComponent
   export const IconDeviceMobile: IconComponent
+  export const IconBulb: IconComponent
+  export const IconSparkles: IconComponent
+  export const IconSend: IconComponent
+  export const IconPlus: IconComponent
+  export const IconTrash: IconComponent
+  export const IconClipboard: IconComponent
+  export const IconRefresh: IconComponent
+  export const IconX: IconComponent
+  export const IconBrandWechat: IconComponent
+  export const IconBrandTiktok: IconComponent
+  export const IconMessageCircle: IconComponent
+  export const IconPin: IconComponent
+  export const IconFlag: IconComponent
+  export const IconQuote: IconComponent
+  export const IconTarget: IconComponent
+  export const IconCopy: IconComponent
+  export const IconCheck: IconComponent
+  export const IconHeart: IconComponent
+  export const IconWorld: IconComponent
+  export const IconMarkdown: IconComponent
+  export const IconZodiacPisces: IconComponent
 }
 
 declare module 'piexifjs' {
