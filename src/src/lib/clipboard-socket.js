@@ -314,7 +314,10 @@ export function io(baseUrl, options = {}) {
         break;
       }
 
-      state.connected = false;
+      if (state.connected) {
+        state.connected = false;
+        socketListeners.emit('disconnect');
+      }
       state.reconnecting = true;
       if (state.everConnected) {
         state.reconnectAttempt += 1;
@@ -345,7 +348,7 @@ export function io(baseUrl, options = {}) {
         payload,
       };
 
-      const requestPromise = postClipboardEvent(state.baseUrl, requestPayload, state.connectAbortController?.signal)
+      const requestPromise = postClipboardEvent(state.baseUrl, requestPayload)
         .then((responseData) => {
           if (typeof ack === 'function') {
             ack(responseData);
@@ -391,3 +394,4 @@ export function io(baseUrl, options = {}) {
 }
 
 export default { io };
+

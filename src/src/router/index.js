@@ -52,6 +52,16 @@ const routes = [
       keywords: 'CIDR,子网划分,重叠检测,IPv4,ACL,华为,Cisco,网络工具',
     },
   },
+  {
+    path: '/tools/image-studio',
+    name: 'ImageStudio',
+    component: () => import('../views/tools/ImageStudio.vue'),
+    meta: {
+      title: '全能极速图片处理工作台 - proHub',
+      description: '纯前端图片压缩、尺寸裁剪、隐私水印、格式转换、长图拼接和九宫格工具。',
+      keywords: '图片压缩,图片裁剪,水印,打码,格式转换,长图,九宫格,HEIC,WebP',
+    },
+  },
   // 预留路由
   {
     path: '/tools/coming-soon',

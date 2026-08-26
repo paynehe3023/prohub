@@ -13,6 +13,8 @@ export default defineConfig(({ mode }) => {
         '@tabler/icons-vue': fileURLToPath(
           new URL('./node_modules/@tabler/icons-vue/dist/cjs/tabler-icons-vue.cjs', import.meta.url),
         ),
+        'socket.io-client': fileURLToPath(new URL('./src/lib/clipboard-socket.js', import.meta.url)),
+        qrcode: fileURLToPath(new URL('./src/lib/qrcode-shim.js', import.meta.url)),
       },
     },
     server: {

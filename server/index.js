@@ -6,6 +6,7 @@ const path = require('path');
 const http = require('http');
 const parseRoute = require('./routes/parse');
 const removeBgRoute = require('./routes/remove-bg');
+const wallpapersRoute = require('./routes/wallpapers');
 const { registerClipboardRealtime } = require('./realtime/clipboard');
 
 const app = express();
@@ -33,6 +34,7 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 // ---- API routes ----
 app.use('/api', parseRoute);
 app.use('/api', removeBgRoute);
+app.use('/api', wallpapersRoute);
 registerClipboardRealtime(app, server);
 
 // ---- Static files (production frontend build) ----

@@ -12,7 +12,6 @@
         <nav class="hidden md:flex items-center gap-6 mx-4">
           <router-link to="/" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-zinc-300 text-glass-sm hover:text-white transition-colors whitespace-nowrap">首页</router-link>
           <a href="#tools" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-zinc-300 text-glass-sm hover:text-white transition-colors whitespace-nowrap">工具</a>
-          <router-link to="/tools/cidr-calculator" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-ios-blue text-glass-sm hover:text-white transition-colors whitespace-nowrap">CIDR</router-link>
           <a href="https://github.com/paynehe3023/prohub" target="_blank" rel="noopener" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-zinc-300 text-glass-sm hover:text-white transition-colors whitespace-nowrap">GitHub</a>
         </nav>
 

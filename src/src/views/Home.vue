@@ -1,5 +1,5 @@
 <template>
-  <section class="relative py-20 md:py-28">
+  <section class="relative pt-14 pb-16 md:pt-16 md:pb-20">
     <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-[1]">
       <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full liquid-glass-inset text-[0.8125rem] font-medium text-zinc-200 text-glass-sm mb-6 tracking-[-0.01em]">
         <IconSparkles class="w-3.5 h-3.5 text-ios-blue" /> 免费 · 开源 · 安全
@@ -11,7 +11,8 @@
         社交媒体无水印解析 · 文本处理 · 图片工具 · 实用计算<br/>
         一站解决，无需安装，即开即用
       </p>
-      <div class="mt-8 flex items-center justify-center gap-3">
+
+      <div class="mt-6 flex items-center justify-center gap-3">
         <a href="#tools" class="btn-ios btn-ios-primary">开始使用</a>
         <a href="https://github.com/paynehe3023/prohub" target="_blank" rel="noopener" class="btn-ios btn-ios-glass">
           <IconBrandGithub class="w-4.5 h-4.5" /> GitHub
@@ -76,8 +77,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { useHead } from '@vueuse/head';
-import { IconSparkles, IconBrandGithub, IconMoodEmpty, IconShieldCheck, IconBolt, IconDeviceMobile } from '@tabler/icons-vue';
+import { useHead } from '@vueuse/head';import { IconSparkles, IconBrandGithub, IconMoodEmpty, IconShieldCheck, IconBolt, IconDeviceMobile } from '@tabler/icons-vue';
 import { tools, categories, getToolsByCategory } from '../config/tools';
 import ToolCard from '../components/ToolCard.vue';
 useHead({ title: 'proHub - 全能在线工具箱' });

@@ -1,15 +1,22 @@
 /**
  * API 统一配置文件
- * 通过环境变量 VITE_API_BASE_URL 控制后端地址
- * 开发环境: Vite proxy 到 localhost:3000
- * 生产环境: 同域下的 /api 路径
+ * 通过环境变量控制前后端地址：
+ * - VITE_API_BASE_URL：HTTP API 基础路径
+ * - VITE_SOCKET_URL：实时连接地址
+ * - VITE_PUBLIC_APP_ORIGIN：房间二维码/分享链接的外部访问地址
  */
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin;
+const CURRENT_ORIGIN = typeof window !== 'undefined' ? window.location.origin : '';
+const CURRENT_PROTOCOL = typeof window !== 'undefined' ? window.location.protocol : 'http:';
+const CURRENT_HOSTNAME = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+const SOCKET_PORT = import.meta.env.VITE_SOCKET_PORT || '3001';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (import.meta.env.DEV ? CURRENT_PROTOCOL + '//' + CURRENT_HOSTNAME + ':' + SOCKET_PORT : CURRENT_ORIGIN);
+const PUBLIC_APP_ORIGIN = import.meta.env.VITE_PUBLIC_APP_ORIGIN || CURRENT_ORIGIN;
 
 export const apiConfig = {
   baseURL: API_BASE_URL,
   socketURL: SOCKET_URL,
+  publicOrigin: PUBLIC_APP_ORIGIN,
   endpoints: {
     parse: '/parse',
     clipboardUpload: '/clipboard/upload',

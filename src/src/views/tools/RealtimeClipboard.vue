@@ -27,7 +27,10 @@
                 </p>
               </div>
 
-              <div class="grid gap-4 md:grid-cols-2">
+              <div v-if="isLocalShareOrigin" class="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+                当前地址是本机地址，手机扫码会连不上。请把“外部访问地址”改成电脑局域网 IP 或正式域名。
+              </div>
+              <div class="grid gap-4 md:grid-cols-3">
                 <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 p-4">
                   <div class="flex items-center justify-between gap-3">
                     <div>
@@ -53,6 +56,21 @@
                     </select>
                   </div>
                   <p class="mt-3 text-xs text-slate-500">房间无活动后自动清空，避免持久化隐私残留。</p>
+                </div>
+
+                <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 p-4">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-xs uppercase tracking-[0.24em] text-slate-400">外部访问地址</p>
+                      <p class="mt-1 text-sm font-semibold text-slate-900 dark:text-white break-all">{{ shareOrigin }}</p>
+                    </div>
+                    <button type="button" @click="resetShareOrigin" class="text-xs font-medium text-sky-600 hover:text-sky-500 inline-flex items-center gap-1">
+                      <IconRefresh size="14" />
+                      恢复默认
+                    </button>
+                  </div>
+                  <input v-model="shareOriginDraft" type="text" placeholder="http://192.168.1.10:5173 或 https://your-domain.com" class="mt-3 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-sky-500" />
+                  <p class="mt-3 text-xs leading-5" :class="shareOriginHintClass">{{ shareOriginHint }}</p>
                 </div>
               </div>
             </div>
@@ -234,7 +252,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useHead } from '@vueuse/head';
 import { useRoute, useRouter } from 'vue-router';
 import QRCode from 'qrcode';
-import { io } from '实时连接-client';
+import { io } from 'socket.io-client';
 import { apiConfig } from '../../config/api';
 import {
   IconCheck,
@@ -266,6 +284,9 @@ useHead({
 const route = useRoute();
 const router = useRouter();
 const socketBaseUrl = apiConfig.socketURL || window.location.origin;
+const defaultShareOrigin = apiConfig.publicOrigin || window.location.origin;
+const SHARE_ORIGIN_STORAGE_KEY = 'prohub-clipboard-share-origin';
+const shareOriginDraft = ref(defaultShareOrigin);
 const ttlOptions = [5, 10, 15, 30, 60];
 const maxClips = 20;
 const inlineImageThreshold = 750 * 1024;
@@ -291,8 +312,36 @@ let lastSentText = '';
 let qrStamp = 0;
 let visibilityHandler = null;
 
+function normalizeBaseUrl(value) {
+  const candidate = String(value || '').trim();
+  if (!candidate) return '';
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    try {
+      return new URL('http://' + candidate).origin;
+    } catch {
+      return '';
+    }
+  }
+}
+
+function isLoopbackHost(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.endsWith('.localhost');
+}
+
 const sortedClips = computed(() => [...clips.value].sort((left, right) => right.createdAt - left.createdAt));
-const roomUrl = computed(() => (roomId.value ? window.location.origin + '/clipboard/' + roomId.value : ''));
+const shareOrigin = computed(() => normalizeBaseUrl(shareOriginDraft.value) || defaultShareOrigin);
+const roomUrl = computed(() => (roomId.value ? shareOrigin.value + '/clipboard/' + roomId.value : ''));
+const isLocalShareOrigin = computed(() => {
+  try {
+    return isLoopbackHost(new URL(shareOrigin.value).hostname);
+  } catch {
+    return true;
+  }
+});
+const shareOriginHint = computed(() => (isLocalShareOrigin.value ? '当前是本机地址，手机扫码请改成电脑局域网 IP 或正式域名。' : '二维码和复制链接会使用这个地址生成。正式部署一般无需修改。'));
+const shareOriginHintClass = computed(() => (isLocalShareOrigin.value ? 'text-amber-600 dark:text-amber-300' : 'text-slate-500'));
 const ttlLabel = computed(() => roomTtlMinutes.value + ' 分钟');
 const connectionLabel = computed(() => {
   if (socketState.value === 'connected') return '已连接';
@@ -400,8 +449,10 @@ function connectSocket() {
   if (!roomId.value) return;
 
   socketState.value = 'connecting';
-  socketInstance = io(socketBaseUrl, {`r`n    roomId: roomId.value,`r`n    ttlMinutes: roomTtlMinutes.value,
-    path: '/实时连接',
+  socketInstance = io(socketBaseUrl, {
+    roomId: roomId.value,
+    ttlMinutes: roomTtlMinutes.value,
+    path: '/socket.io',
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: Infinity,
@@ -787,6 +838,11 @@ function syncRoomMeta(room) {
   if (room.expiresAt) roomExpiresAt.value = room.expiresAt;
 }
 
+function resetShareOrigin() {
+  shareOriginDraft.value = defaultShareOrigin;
+  window.localStorage.removeItem(SHARE_ORIGIN_STORAGE_KEY);
+}
+
 watch(() => route.params.roomId, async (value) => {
   const normalized = normalizeRoomId(value);
   if (normalized) {
@@ -802,11 +858,19 @@ watch(roomUrl, () => {
   scheduleQrRefresh();
 }, { immediate: true });
 
+watch(shareOriginDraft, (value) => {
+  window.localStorage.setItem(SHARE_ORIGIN_STORAGE_KEY, String(value || '').trim());
+});
+
 watch(textDraft, () => {
   if (!textDraft.value.trim()) lastSentText = '';
 });
 
 onMounted(() => {
+  const savedShareOrigin = window.localStorage.getItem(SHARE_ORIGIN_STORAGE_KEY);
+  if (savedShareOrigin) {
+    shareOriginDraft.value = savedShareOrigin;
+  }
   ticker = window.setInterval(() => {
     now.value = Date.now();
   }, 1000);
@@ -838,4 +902,6 @@ onBeforeUnmount(() => {
   transform: translateY(-8px) scale(0.98);
 }
 </style>
+
+
 
