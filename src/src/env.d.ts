@@ -34,3 +34,16 @@ declare module '@tabler/icons-vue' {
   export const IconBolt: IconComponent
   export const IconDeviceMobile: IconComponent
 }
+
+declare module 'piexifjs' {
+  const ImageIFD: Record<string, number>
+  const ExifIFD: Record<string, number>
+  const GPSIFD: Record<string, number>
+  function load(dataUrl: string): Record<string, any>
+  function dump(exifObj: Record<string, any>): string
+  function insert(exifBytes: string, jpegDataUrl: string): string
+  function remove(jpegDataUrl: string): string
+  export { ImageIFD, ExifIFD, GPSIFD, load, dump, insert, remove }
+  const piexif: { ImageIFD: typeof ImageIFD; ExifIFD: typeof ExifIFD; GPSIFD: typeof GPSIFD; load: typeof load; dump: typeof dump; insert: typeof insert; remove: typeof remove }
+  export default piexif
+}

@@ -128,7 +128,7 @@
                 <h2 class="text-sm font-semibold text-white text-glass">隐私水印与打码</h2>
                 <span class="relative inline-flex group">
                   <button type="button" class="w-4 h-4 rounded-full border border-white/30 text-[0.625rem] text-zinc-300 leading-none hover:text-white hover:border-white/70" aria-label="盲水印说明">?</button>
-                  <span role="tooltip" class="pointer-events-none absolute left-6 top-1/2 z-[80] w-64 -translate-y-1/2 rounded-xl bg-zinc-950/95 px-3 py-2 text-[0.6875rem] leading-relaxed text-zinc-200 opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">盲水印会把半透明的斜向文字平铺写入导出图片；遮罩支持马赛克、黑色/白色遮盖与柔焦模糊，每个遮罩独立记录自己的方式。</span>
+                  <span role="tooltip" class="pointer-events-none absolute left-0 top-full mt-2 z-[100] w-72 rounded-xl bg-zinc-950/95 px-3 py-2 text-[0.6875rem] leading-relaxed text-zinc-200 opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">盲水印会把半透明的斜向文字平铺写入导出图片；遮罩支持马赛克、黑色/白色遮盖与柔焦模糊，每个遮罩独立记录自己的方式，绘制时即可看到真实效果。</span>
                 </span>
               </div>
               <p class="text-[0.6875rem] text-zinc-500 mt-1">在预览图上拖拽矩形，导出时按物理像素映射。</p>
@@ -147,8 +147,8 @@
             </label>
             <div class="rounded-xl liquid-glass-inset p-3 text-[0.6875rem] text-zinc-400">动态块大小：{{ dynamicMosaicBlock }} px · 已添加 {{ masks.length }} 个遮罩</div>
             <div class="grid grid-cols-3 gap-2">
-              <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!undoStack.length" @click="undoMask">撤销</button>
-              <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!redoStack.length" @click="redoMask">重做</button>
+              <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!undoStack.length" @click="undoMask">← 撤回</button>
+              <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!redoStack.length" @click="redoMask">重做 →</button>
               <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!masks.length" @click="clearMasks">清除全部</button>
             </div>
           </div>
@@ -156,7 +156,7 @@
           <div v-else-if="activeTab === 'convert'" class="space-y-4">
             <div>
               <h2 class="text-sm font-semibold text-white text-glass">格式转换与 EXIF 清洗</h2>
-              <p class="text-[0.6875rem] text-zinc-500 mt-1">Canvas 重绘会剥离 GPS 等原始 EXIF 信息。</p>
+              <p class="text-[0.6875rem] text-zinc-500 mt-1">重绘会剥离 GPS 等原始 EXIF 信息。</p>
             </div>
             <label class="block text-xs text-zinc-400">导出格式
               <select v-model="outputFormat" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white bg-transparent outline-none">
@@ -166,6 +166,24 @@
                 <option value="image/avif">AVIF（需浏览器支持）</option>
               </select>
             </label>
+            <label v-if="outputFormat === 'image/jpeg'" class="block text-xs text-zinc-400">EXIF 处理
+              <select v-model="exifPolicy" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white bg-transparent outline-none">
+                <option value="strip">剥离 EXIF（默认）</option>
+                <option value="keep">保留原 EXIF</option>
+                <option value="edit">编辑 EXIF</option>
+              </select>
+            </label>
+            <div v-if="exifPolicy === 'edit'" class="space-y-2 rounded-xl liquid-glass-inset p-3">
+              <label class="block text-xs text-zinc-400">拍摄时间（YYYY:MM:DD HH:MM:SS）
+                <input v-model="exifEditDate" type="text" placeholder="2026:08:26 12:00:00" class="mt-1 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none" />
+              </label>
+              <label class="block text-xs text-zinc-400">相机厂商
+                <input v-model="exifEditMake" type="text" placeholder="Apple" class="mt-1 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none" />
+              </label>
+              <label class="block text-xs text-zinc-400">相机型号
+                <input v-model="exifEditModel" type="text" placeholder="iPhone 15 Pro" class="mt-1 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none" />
+              </label>
+            </div>
             <label v-if="outputFormat !== 'image/png'" class="block text-xs text-zinc-400">质量 {{ Math.round(outputQuality * 100) }}%
               <input v-model.number="outputQuality" type="range" min="0.4" max="1" step="0.01" class="mt-2 w-full accent-[#007AFF]" />
             </label>
@@ -185,6 +203,9 @@
 
           <button type="button" class="w-full btn-ios btn-ios-primary justify-center" :disabled="!currentImage || isProcessing || (activeTab === 'compose' && files.length < 2)" @click="runPrimaryAction">
             {{ isProcessing ? '处理中...' : primaryActionLabel }}
+          </button>
+          <button v-if="activeTab === 'compose'" type="button" class="w-full btn-ios btn-ios-glass justify-center" :disabled="!currentImage || isProcessing" @click="createNineGridAndScroll">
+            生成九宫格
           </button>
         </section>
       </aside>
@@ -242,13 +263,12 @@
           </div>
         </section>
 
-        <section v-if="activeTab === 'compose'" class="liquid-glass p-4 sm:p-5">
+        <section ref="nineGridSection" v-if="activeTab === 'compose'" class="liquid-glass p-4 sm:p-5">
           <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
               <h2 class="text-base font-semibold text-white text-glass">九宫格切图</h2>
               <p class="text-[0.6875rem] text-zinc-500 mt-1">原图居中取正方形，再切成 3 × 3 等大物理像素图片。</p>
             </div>
-            <button type="button" class="btn-ios btn-ios-glass py-2 px-3 text-xs" :disabled="!currentImage || isProcessing" @click="createNineGrid">生成九宫格</button>
           </div>
           <div v-if="!gridTiles.length" class="rounded-[16px] border border-dashed border-white/15 p-8 text-center text-xs text-zinc-500">生成后会在这里显示 9 张切图</div>
           <div v-else class="grid grid-cols-3 gap-2 sm:gap-3">
@@ -333,6 +353,11 @@ const watermarkText = ref('仅限 XX 办理业务使用，他用无效');
 const maskStyle = ref<MaskStyle>('mosaic');
 const outputFormat = ref('image/jpeg');
 const outputQuality = ref(0.92);
+const exifPolicy = ref<'strip' | 'keep' | 'edit'>('strip');
+const exifEditDate = ref('');
+const exifEditMake = ref('');
+const exifEditModel = ref('');
+const nineGridSection = ref<HTMLElement | null>(null);
 const composeDirection = ref<ComposeDirection>('vertical');
 const cropRect = ref<Rect | null>(null);
 const temporaryCropRect = ref<Rect | null>(null);
@@ -447,6 +472,13 @@ function initializeImageState(): void {
   outputWidth.value = image?.naturalWidth || 0;
   outputHeight.value = image?.naturalHeight || 0;
   selectedPreset.value = 'free';
+  watermarkEnabled.value = true;
+  watermarkText.value = '仅限 XX 办理业务使用，他用无效';
+  maskStyle.value = 'mosaic';
+  exifPolicy.value = 'strip';
+  exifEditDate.value = '';
+  exifEditMake.value = '';
+  exifEditModel.value = '';
   nextTick(drawPreview);
 }
 
@@ -516,14 +548,19 @@ async function addFiles(fileList: File[]): Promise<void> {
   const imageFiles = fileList.filter((file) => file.type.startsWith('image/') || isHeic(file));
   if (!imageFiles.length) return;
   errorMessage.value = '';
+  const addedImages: StudioImage[] = [];
   for (const file of imageFiles) {
     try {
       const image = await decodeImageFile(file);
       files.value.push(image);
-      if (!selectedId.value) selectedId.value = image.id;
+      addedImages.push(image);
     } catch (error) {
       errorMessage.value = error instanceof Error ? error.message : '图片读取失败';
     }
+  }
+  if (files.value.length === addedImages.length || addedImages.length > 0) {
+    selectedId.value = addedImages[0].id;
+    initializeImageState();
   }
   if (currentImage.value) nextTick(drawPreview);
 }
@@ -649,16 +686,19 @@ function onPreviewPointerUp(): void {
   drawPreview();
 }
 
-function maskOverlayFill(style: MaskStyle): string {
-  if (style === 'black') return 'rgba(0,0,0,0.82)';
-  if (style === 'white') return 'rgba(255,255,255,0.85)';
-  if (style === 'blur') return 'rgba(120,160,255,0.3)';
-  return 'rgba(20,20,20,0.58)';
-}
-function drawMaskOverlay(context: CanvasRenderingContext2D, mask: Mask, temporary = false): void {
+function drawMaskOverlay(context: CanvasRenderingContext2D, sourceCanvas: HTMLCanvasElement, mask: Mask, temporary = false): void {
   context.save();
-  context.fillStyle = maskOverlayFill(mask.style);
-  context.fillRect(mask.rect.x, mask.rect.y, mask.rect.width, mask.rect.height);
+  if (mask.style === 'black') {
+    context.fillStyle = '#000';
+    context.fillRect(mask.rect.x, mask.rect.y, mask.rect.width, mask.rect.height);
+  } else if (mask.style === 'white') {
+    context.fillStyle = '#fff';
+    context.fillRect(mask.rect.x, mask.rect.y, mask.rect.width, mask.rect.height);
+  } else if (mask.style === 'blur') {
+    drawBlur(context, sourceCanvas, mask.rect);
+  } else {
+    drawMosaic(context, sourceCanvas, mask.rect);
+  }
   context.strokeStyle = temporary ? '#007AFF' : 'rgba(255,255,255,0.8)';
   context.lineWidth = Math.max(2, Math.round(Math.max(mask.rect.width, mask.rect.height) / 300));
   context.setLineDash(temporary ? [8, 8] : []);
@@ -700,8 +740,8 @@ function drawPreview(): void {
   context.imageSmoothingEnabled = true;
   context.drawImage(image.element, 0, 0, image.naturalWidth, image.naturalHeight);
   if (activeTab.value === 'privacy') {
-    masks.value.forEach((mask) => drawMaskOverlay(context, mask));
-    if (temporaryMaskRect.value) drawMaskOverlay(context, { rect: temporaryMaskRect.value, style: maskStyle.value }, true);
+    masks.value.forEach((mask) => drawMaskOverlay(context, canvas, mask));
+    if (temporaryMaskRect.value) drawMaskOverlay(context, canvas, { rect: temporaryMaskRect.value, style: maskStyle.value }, true);
     drawWatermark(context, canvas.width, canvas.height);
   }
   if (activeTab.value === 'resize') {
@@ -848,11 +888,51 @@ function setProcessed(blob: Blob, width: number, height: number): void {
   viewMode.value = 'processed';
 }
 
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function applyExifPolicy(dataUrl: string, sourceFile: File | null): Promise<string> {
+  if (exifPolicy.value === 'strip') return dataUrl;
+  let newDataUrl = dataUrl;
+  try {
+    const piexifModule = await import('piexifjs');
+    const piexif = piexifModule.default || piexifModule;
+    let exifObj: Record<string, any> = { '0th': {}, 'Exif': {}, 'GPS': {}, 'Interop': {}, '1st': {}, 'thumbnail': null };
+    if (exifPolicy.value === 'keep' && sourceFile) {
+      const sourceDataUrl = await fileToDataUrl(sourceFile);
+      exifObj = piexif.load(sourceDataUrl);
+    } else if (exifPolicy.value === 'edit') {
+      if (exifEditDate.value) exifObj['0th'][piexif.ImageIFD.DateTime] = exifEditDate.value;
+      if (exifEditMake.value) exifObj['0th'][piexif.ImageIFD.Make] = exifEditMake.value;
+      if (exifEditModel.value) exifObj['0th'][piexif.ImageIFD.Model] = exifEditModel.value;
+    }
+    newDataUrl = piexif.insert(piexif.dump(exifObj), dataUrl);
+  } catch {
+    newDataUrl = dataUrl;
+  }
+  return newDataUrl;
+}
+
 async function processCurrent(): Promise<void> {
   const canvas = renderCurrentCanvas();
-  const blob = activeTab.value === 'compress'
-    ? await compressToTarget(canvas, Math.max(10, targetKB.value) * 1024)
-    : await canvasToBlob(canvas, activeTab.value === 'convert' ? outputFormat.value : 'image/jpeg', outputQuality.value);
+  const image = currentImage.value;
+  if (!image) return;
+  let blob: Blob;
+  const mime = activeTab.value === 'convert' ? outputFormat.value : 'image/jpeg';
+  if (activeTab.value === 'compress') {
+    blob = await compressToTarget(canvas, Math.max(10, targetKB.value) * 1024);
+  } else if (mime === 'image/jpeg' && exifPolicy.value !== 'strip') {
+    const dataUrl = await applyExifPolicy(canvas.toDataURL('image/jpeg', outputQuality.value), image.file);
+    blob = dataUrlToBlob(dataUrl);
+  } else {
+    blob = await canvasToBlob(canvas, mime, outputQuality.value);
+  }
   setProcessed(blob, canvas.width, canvas.height);
   setStatus(`已生成 ${formatBytes(blob.size)} 处理结果`);
 }
@@ -880,6 +960,12 @@ async function composeImages(): Promise<void> {
   const blob = await canvasToBlob(canvas, 'image/jpeg', 0.92);
   setProcessed(blob, canvas.width, canvas.height);
   setStatus(`已拼接 ${files.value.length} 张图片`);
+}
+
+async function createNineGridAndScroll(): Promise<void> {
+  await createNineGrid();
+  await nextTick();
+  if (nineGridSection.value) nineGridSection.value.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function createNineGrid(): Promise<void> {
@@ -974,7 +1060,7 @@ function clearMasks(): void {
 }
 
 watch(() => currentImage.value?.id, initializeImageState);
-watch([activeTab, masks, watermarkEnabled, watermarkText, maskStyle], () => nextTick(drawPreview), { deep: true });
+watch([activeTab, masks, watermarkEnabled, watermarkText, maskStyle, viewMode], () => nextTick(drawPreview), { deep: true });
 
 onMounted(() => nextTick(drawPreview));
 onUnmounted(() => {

@@ -18,6 +18,7 @@
       <div class="flex items-center gap-2 mt-3">
         <span class="text-[0.6875rem] text-zinc-500 text-glass-sm">支持：</span>
         <span class="text-[0.6875rem] px-2 py-0.5 rounded-full bg-ios-red/20 text-ios-red font-medium">小红书</span>
+        <span class="text-[0.6875rem] px-2 py-0.5 rounded-full bg-ios-blue/20 text-ios-blue font-medium">抖音</span>
         <span class="text-[0.6875rem] px-2 py-0.5 rounded-full bg-ios-orange/20 text-ios-orange font-medium">微博</span>
       </div>
     </div>
