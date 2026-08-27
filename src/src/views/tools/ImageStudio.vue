@@ -188,22 +188,78 @@
               </select>
             </label>
             <div v-if="exifPolicy === 'edit'" class="space-y-2 rounded-xl liquid-glass-inset p-3">
-              <label class="block text-xs text-zinc-400">拍摄时间
-                <input
-                  v-model="exifEditDate"
-                  type="datetime-local"
-                  step="1"
-                  inputmode="none"
-                  autocomplete="off"
-                  aria-label="拍摄时间"
-                  class="mt-1 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none"
-                  @keydown="blockDateTimeKeyboardInput"
-                  @beforeinput.prevent
-                  @paste.prevent
-                  @drop.prevent
-                />
-              </label>
-              <p class="text-[0.625rem] leading-relaxed text-zinc-500">使用日历和时间选择器，导出时会转换为 EXIF 标准时间格式。</p>
+              <div class="block text-xs text-zinc-400">
+                <div ref="exifDatePickerRoot" class="relative mt-1">
+                  <button
+                    type="button"
+                    class="w-full rounded-xl liquid-glass-inset px-3 py-2 text-left text-white outline-none transition-colors hover:bg-white/10 focus:ring-2 focus:ring-ios-blue/60"
+                    aria-haspopup="dialog"
+                    :aria-expanded="exifDatePickerOpen"
+                    @click.prevent.stop="openExifDatePicker"
+                  >
+                    <span :class="exifEditDateDisplay ? 'text-white' : 'text-zinc-500'">
+                      {{ exifEditDateDisplay || '点击选择拍摄时间' }}
+                    </span>
+                  </button>
+                  <IconClockHour4 class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400" size="16" />
+                  <div
+                    v-if="exifDatePickerOpen"
+                    role="dialog"
+                    aria-label="选择拍摄时间"
+                    class="absolute left-0 top-full z-[10000] mt-2 w-[min(23rem,calc(100vw-2rem))] rounded-2xl border border-white/15 bg-zinc-950/98 p-3 shadow-2xl backdrop-blur-2xl"
+                    @click.stop
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <button type="button" class="rounded-lg px-2 py-1 text-lg text-zinc-300 hover:bg-white/10 hover:text-white" aria-label="上个月" @click="changeExifPickerMonth(-1)">‹</button>
+                      <span class="text-sm font-semibold text-white">{{ exifPickerMonthLabel }}</span>
+                      <button type="button" class="rounded-lg px-2 py-1 text-lg text-zinc-300 hover:bg-white/10 hover:text-white" aria-label="下个月" @click="changeExifPickerMonth(1)">›</button>
+                    </div>
+                    <div class="mt-3 grid grid-cols-7 gap-1 text-center text-[0.625rem] text-zinc-500">
+                      <span v-for="weekday in ['日', '一', '二', '三', '四', '五', '六']" :key="weekday">{{ weekday }}</span>
+                    </div>
+                    <div class="mt-1 grid grid-cols-7 gap-1">
+                      <button
+                        v-for="day in exifPickerCalendarDays"
+                        :key="day.dateKey"
+                        type="button"
+                        class="aspect-square rounded-lg text-xs transition-colors"
+                        :class="[
+                          day.currentMonth ? 'text-zinc-200' : 'text-zinc-600',
+                          day.dateKey === exifPickerSelectedDateKey ? 'bg-ios-blue text-white shadow-lg shadow-ios-blue/20' : 'hover:bg-white/10 hover:text-white',
+                        ]"
+                        @click="selectExifPickerDate(day.dateKey)"
+                      >
+                        {{ day.day }}
+                      </button>
+                    </div>
+                    <div class="mt-3 border-t border-white/10 pt-3">
+                      <p class="mb-2 text-[0.6875rem] text-zinc-500">选择时间</p>
+                      <div class="grid grid-cols-3 gap-2">
+                        <label class="text-[0.625rem] text-zinc-500">时
+                          <select :value="exifPickerTime.hours" class="liquid-glass-select mt-1 w-full rounded-lg px-2 py-1.5 text-xs text-white outline-none" @change="updateExifPickerTime('hours', $event)">
+                            <option v-for="hour in 24" :key="hour - 1" :value="hour - 1">{{ String(hour - 1).padStart(2, '0') }}</option>
+                          </select>
+                        </label>
+                        <label class="text-[0.625rem] text-zinc-500">分
+                          <select :value="exifPickerTime.minutes" class="liquid-glass-select mt-1 w-full rounded-lg px-2 py-1.5 text-xs text-white outline-none" @change="updateExifPickerTime('minutes', $event)">
+                            <option v-for="minute in 60" :key="minute - 1" :value="minute - 1">{{ String(minute - 1).padStart(2, '0') }}</option>
+                          </select>
+                        </label>
+                        <label class="text-[0.625rem] text-zinc-500">秒
+                          <select :value="exifPickerTime.seconds" class="liquid-glass-select mt-1 w-full rounded-lg px-2 py-1.5 text-xs text-white outline-none" @change="updateExifPickerTime('seconds', $event)">
+                            <option v-for="second in 60" :key="second - 1" :value="second - 1">{{ String(second - 1).padStart(2, '0') }}</option>
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                    <div class="mt-3 flex items-center justify-between gap-2">
+                      <button type="button" class="rounded-lg px-2 py-1.5 text-xs text-zinc-400 hover:bg-white/10 hover:text-white" @click="clearExifPicker">清除</button>
+                      <button type="button" class="rounded-lg bg-ios-blue px-3 py-1.5 text-xs text-white hover:bg-ios-blue/90" @click="confirmExifPicker">完成</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p class="text-[0.625rem] leading-relaxed text-zinc-500">点击后在日历和时间面板中选择，导出时会转换为 EXIF 标准时间格式。</p>
               <label class="block text-xs text-zinc-400">相机厂商
                 <input v-model="exifEditMake" type="text" placeholder="Apple" class="mt-1 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none" />
               </label>
@@ -320,7 +376,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useHead } from '@vueuse/head';
 
 import JSZip from 'jszip';
-import { IconDownload, IconPhoto } from '@tabler/icons-vue';
+import { IconClockHour4, IconDownload, IconPhoto } from '@tabler/icons-vue';
 import BreadcrumbNav from '../../components/BreadcrumbNav.vue';
 
 type StudioTab = 'compress' | 'resize' | 'privacy' | 'convert' | 'compose';
@@ -330,6 +386,7 @@ type ComposeDirection = 'vertical' | 'horizontal';
 interface Point { x: number; y: number }
 interface Rect { x: number; y: number; width: number; height: number }
 interface Mask { rect: Rect; style: MaskStyle; rotation: number }
+interface ExifPickerCalendarDay { dateKey: string; day: number; currentMonth: boolean }
 interface Preset { id: string; label: string; width: number; height: number }
 interface GridTile { id: string; name: string; blob: Blob; url: string }
 interface MaskInteractionState {
@@ -418,6 +475,10 @@ const outputFormat = ref('image/jpeg');
 const outputQuality = ref(0.92);
 const exifPolicy = ref<'strip' | 'keep' | 'edit'>('strip');
 const exifEditDate = ref('');
+const exifDatePickerOpen = ref(false);
+const exifDatePickerRoot = ref<HTMLElement | null>(null);
+const exifPickerDraft = ref('');
+const exifPickerMonth = ref('');
 const exifEditMake = ref('');
 const exifEditModel = ref('');
 const nineGridSection = ref<HTMLElement | null>(null);
@@ -452,6 +513,36 @@ const hasCurrentProcessed = computed(() => Boolean(
   && currentImage.value.edit.processedUrl === processedUrl.value,
 ));
 const selectedMask = computed(() => selectedMaskIndex.value === null ? null : masks.value[selectedMaskIndex.value] || null);
+const exifEditDateDisplay = computed(() => formatDateTimeForDisplay(exifEditDate.value));
+const exifPickerMonthLabel = computed(() => {
+  const match = exifPickerMonth.value.match(/^(\d{4})-(\d{2})$/);
+  return match ? `${match[1]}年${Number(match[2])}月` : '选择日期';
+});
+const exifPickerCalendarDays = computed<ExifPickerCalendarDay[]>(() => {
+  const match = exifPickerMonth.value.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return [];
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const firstDay = new Date(year, month, 1);
+  const firstCell = new Date(year, month, 1 - firstDay.getDay());
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(firstCell);
+    date.setDate(firstCell.getDate() + index);
+    return {
+      dateKey: formatDateKey(date),
+      day: date.getDate(),
+      currentMonth: date.getMonth() === month && date.getFullYear() === year,
+    };
+  });
+});
+const exifPickerSelectedDateKey = computed(() => {
+  const date = parseDateTimeLocal(exifPickerDraft.value);
+  return date ? formatDateKey(date) : '';
+});
+const exifPickerTime = computed(() => {
+  const date = parseDateTimeLocal(exifPickerDraft.value) || new Date();
+  return { hours: date.getHours(), minutes: date.getMinutes(), seconds: date.getSeconds() };
+});
 const sizeDeltaLabel = computed(() => {
   if (!currentImage.value || !processedBlob.value) return '';
   return `${Math.round(processedBlob.value.size / currentImage.value.size * 100)}%`;
@@ -575,6 +666,9 @@ function resetEditorRefs(): void {
   maskStyle.value = 'mosaic';
   exifPolicy.value = 'strip';
   exifEditDate.value = '';
+  exifDatePickerOpen.value = false;
+  exifPickerDraft.value = '';
+  exifPickerMonth.value = '';
   exifEditMake.value = '';
   exifEditModel.value = '';
   outputFormat.value = 'image/jpeg';
@@ -631,6 +725,9 @@ function saveImageState(imageId: string | null): void {
 function loadImageState(image: StudioImage): void {
   if (!image.edit) image.edit = createImageEditState(image.naturalWidth, image.naturalHeight);
   restoringState = true;
+  exifDatePickerOpen.value = false;
+  exifPickerDraft.value = '';
+  exifPickerMonth.value = '';
   const state = image.edit;
   targetKB.value = state.targetKB;
   selectedPreset.value = state.selectedPreset;
@@ -780,6 +877,7 @@ function onDrop(event: DragEvent): void {
 
 function switchTab(tab: StudioTab): void {
   activeTab.value = tab;
+  if (tab !== 'convert') exifDatePickerOpen.value = false;
   viewMode.value = 'editing';
   if (tab === 'resize' && currentImage.value && !cropRect.value) cropRect.value = fullImageRect();
   nextTick(drawPreview);
@@ -960,6 +1058,41 @@ function getMaskHandle(point: Point, mask: Mask): 'delete' | 'rotate' | 'resize'
   return null;
 }
 
+function padDatePart(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function formatDateKey(date: Date): string {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
+}
+
+function formatDateTimeLocal(date: Date): string {
+  return `${formatDateKey(date)}T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}:${padDatePart(date.getSeconds())}`;
+}
+
+function parseDateTimeLocal(value: string): Date | null {
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const date = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5]),
+    Number(match[6] || 0),
+    0,
+  );
+  if (
+    date.getFullYear() !== Number(match[1])
+    || date.getMonth() !== Number(match[2]) - 1
+    || date.getDate() !== Number(match[3])
+    || date.getHours() !== Number(match[4])
+    || date.getMinutes() !== Number(match[5])
+    || date.getSeconds() !== Number(match[6] || 0)
+  ) return null;
+  return date;
+}
+
 function masksAreEqual(first: Mask[], second: Mask[]): boolean {
   if (first.length !== second.length) return false;
   return first.every((mask, index) => {
@@ -1118,16 +1251,24 @@ function drawMaskEffect(context: CanvasRenderingContext2D, sourceCanvas: HTMLCan
   drawMaskPath(context, mask);
   context.clip();
   if (mask.style === 'black') {
-    context.fillStyle = '#000';
-    context.fillRect(mask.rect.x, mask.rect.y, mask.rect.width, mask.rect.height);
+    drawSolidMask(context, mask, '#000');
   } else if (mask.style === 'white') {
-    context.fillStyle = '#fff';
-    context.fillRect(mask.rect.x, mask.rect.y, mask.rect.width, mask.rect.height);
+    drawSolidMask(context, mask, '#fff');
   } else if (mask.style === 'blur') {
-    drawBlur(context, sourceCanvas, mask.rect);
+    drawBlur(context, sourceCanvas, mask);
   } else {
     drawMosaic(context, sourceCanvas, mask);
   }
+  context.restore();
+}
+
+function drawSolidMask(context: CanvasRenderingContext2D, mask: Mask, color: string): void {
+  const center = maskCenter(mask);
+  context.save();
+  context.translate(center.x, center.y);
+  context.rotate(mask.rotation * Math.PI / 180);
+  context.fillStyle = color;
+  context.fillRect(-mask.rect.width / 2, -mask.rect.height / 2, mask.rect.width, mask.rect.height);
   context.restore();
 }
 
@@ -1331,26 +1472,30 @@ function drawMosaic(
 function drawBlur(
   context: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
-  sourceRect: Rect,
+  mask: Mask,
 ): void {
-  const radius = Math.max(2, Math.round(Math.min(sourceRect.width, sourceRect.height) / 30));
+  const radius = Math.max(2, Math.round(Math.min(mask.rect.width, mask.rect.height) / 30));
   const padding = Math.max(4, radius * 3);
-  const sourceX = Math.max(0, Math.floor(sourceRect.x - padding));
-  const sourceY = Math.max(0, Math.floor(sourceRect.y - padding));
-  const sourceRight = Math.min(canvas.width, Math.ceil(sourceRect.x + sourceRect.width + padding));
-  const sourceBottom = Math.min(canvas.height, Math.ceil(sourceRect.y + sourceRect.height + padding));
-  const sourceWidth = Math.max(1, sourceRight - sourceX);
-  const sourceHeight = Math.max(1, sourceBottom - sourceY);
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = sourceWidth;
-  tempCanvas.height = sourceHeight;
-  const tempContext = tempCanvas.getContext('2d');
-  if (!tempContext) return;
-  tempContext.drawImage(canvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, tempCanvas.width, tempCanvas.height);
-  context.save();
-  context.filter = `blur(${radius}px)`;
-  context.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, sourceX, sourceY, tempCanvas.width, tempCanvas.height);
-  context.restore();
+  const blurredCanvas = document.createElement('canvas');
+  blurredCanvas.width = canvas.width + padding * 2;
+  blurredCanvas.height = canvas.height + padding * 2;
+  const blurredContext = blurredCanvas.getContext('2d');
+  if (!blurredContext) return;
+  blurredContext.imageSmoothingEnabled = true;
+  blurredContext.imageSmoothingQuality = 'high';
+  blurredContext.filter = `blur(${radius}px)`;
+  blurredContext.drawImage(canvas, padding, padding);
+  context.drawImage(
+    blurredCanvas,
+    padding,
+    padding,
+    canvas.width,
+    canvas.height,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
 }
 
 function applyMasksAndWatermark(canvas: HTMLCanvasElement, sourceCrop: Rect): void {
@@ -1474,9 +1619,61 @@ function toDateTimeLocalInput(value: string): string {
   return exifDate.replace(/^(\d{4}):(\d{2}):(\d{2}) /, '$1-$2-$3T');
 }
 
-function blockDateTimeKeyboardInput(event: KeyboardEvent): void {
-  if (event.key === 'Tab' || event.key === 'Escape') return;
-  event.preventDefault();
+function formatDateTimeForDisplay(value: string): string {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return '';
+  return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6] || '00'}`;
+}
+
+function openExifDatePicker(): void {
+  const current = parseDateTimeLocal(exifEditDate.value) || new Date();
+  current.setMilliseconds(0);
+  exifPickerDraft.value = formatDateTimeLocal(current);
+  exifPickerMonth.value = `${current.getFullYear()}-${padDatePart(current.getMonth() + 1)}`;
+  exifDatePickerOpen.value = true;
+}
+
+function changeExifPickerMonth(delta: number): void {
+  const match = exifPickerMonth.value.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1 + delta, 1);
+  exifPickerMonth.value = `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}`;
+}
+
+function selectExifPickerDate(dateKey: string): void {
+  const parts = dateKey.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return;
+  const current = parseDateTimeLocal(exifPickerDraft.value) || new Date();
+  const selected = new Date(parts[0], parts[1] - 1, parts[2], current.getHours(), current.getMinutes(), current.getSeconds(), 0);
+  exifPickerDraft.value = formatDateTimeLocal(selected);
+  exifPickerMonth.value = `${selected.getFullYear()}-${padDatePart(selected.getMonth() + 1)}`;
+}
+
+function updateExifPickerTime(unit: 'hours' | 'minutes' | 'seconds', event: Event): void {
+  const value = Number((event.target as HTMLSelectElement).value);
+  if (!Number.isInteger(value)) return;
+  const date = parseDateTimeLocal(exifPickerDraft.value) || new Date();
+  if (unit === 'hours') date.setHours(value);
+  if (unit === 'minutes') date.setMinutes(value);
+  if (unit === 'seconds') date.setSeconds(value);
+  date.setMilliseconds(0);
+  exifPickerDraft.value = formatDateTimeLocal(date);
+}
+
+function clearExifPicker(): void {
+  exifEditDate.value = '';
+  exifPickerDraft.value = '';
+  exifDatePickerOpen.value = false;
+}
+
+function confirmExifPicker(): void {
+  if (parseDateTimeLocal(exifPickerDraft.value)) exifEditDate.value = exifPickerDraft.value;
+  exifDatePickerOpen.value = false;
+}
+
+function closeExifDatePickerOnOutside(event: PointerEvent): void {
+  if (!exifDatePickerOpen.value || !exifDatePickerRoot.value) return;
+  if (!exifDatePickerRoot.value.contains(event.target as Node)) exifDatePickerOpen.value = false;
 }
 
 async function applyExifPolicy(dataUrl: string, sourceFile: File | null): Promise<string> {
@@ -1713,8 +1910,12 @@ watch([activeTab, masks, watermarkEnabled, watermarkText, maskStyle, cropRect], 
   nextTick(drawPreview);
 }, { deep: true });
 
-onMounted(() => nextTick(drawPreview));
+onMounted(() => {
+  document.addEventListener('pointerdown', closeExifDatePickerOnOutside);
+  nextTick(drawPreview);
+});
 onUnmounted(() => {
+  document.removeEventListener('pointerdown', closeExifDatePickerOnOutside);
   saveImageState(selectedId.value);
   files.value.forEach((image) => {
     URL.revokeObjectURL(image.sourceUrl);
