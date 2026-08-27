@@ -7,6 +7,7 @@
     <AppFooter />
     <DonateButton />
     <BgSwitcher />
+    <BackToTop />
   </div>
 </template>
 
@@ -15,4 +16,5 @@ import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
 import DonateButton from './components/DonateButton.vue';
 import BgSwitcher from './components/BgSwitcher.vue';
+import BackToTop from './components/BackToTop.vue';
 </script>

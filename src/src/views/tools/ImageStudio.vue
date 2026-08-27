@@ -33,7 +33,7 @@
     </section>
 
     <div class="grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)] gap-5">
-      <aside class="space-y-5">
+      <aside class="relative z-[200] space-y-5">
         <section class="liquid-glass p-4">
           <div class="flex items-center justify-between gap-3 mb-3">
             <div>
@@ -78,7 +78,7 @@
           </div>
         </section>
 
-        <section class="liquid-glass p-4 space-y-4">
+        <section class="relative z-[300] liquid-glass p-4 space-y-4 overflow-visible">
           <div v-if="activeTab === 'compress'" class="space-y-4">
             <div>
               <h2 class="text-sm font-semibold text-white text-glass">指定 KB 压缩</h2>
@@ -97,21 +97,21 @@
               <p class="text-[0.6875rem] text-zinc-500 mt-1">拖拽预览中的选框，坐标始终按原图物理像素记录。</p>
             </div>
             <label class="block text-xs text-zinc-400">尺寸预设
-              <select v-model="selectedPreset" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white bg-transparent outline-none" @change="applyPreset">
+              <select v-model="selectedPreset" class="liquid-glass-select mt-2 w-full rounded-xl px-3 py-2 text-white outline-none" @change="applyPreset">
                 <option value="free">自由裁剪</option>
                 <option v-for="preset in presets" :key="preset.id" :value="preset.id">{{ preset.label }} · {{ preset.width }} × {{ preset.height }}</option>
               </select>
             </label>
             <div class="grid grid-cols-2 gap-2">
               <label class="text-xs text-zinc-400">Width
-                <input v-model.number="outputWidth" type="number" min="1" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none" @input="onWidthInput" />
+                <input v-model.number="outputWidth" :disabled="selectedPreset !== 'free'" type="number" min="1" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none disabled:cursor-not-allowed disabled:opacity-50" @input="onWidthInput" />
               </label>
               <label class="text-xs text-zinc-400">Height
-                <input v-model.number="outputHeight" type="number" min="1" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none" @input="onHeightInput" />
+                <input v-model.number="outputHeight" :disabled="selectedPreset !== 'free'" type="number" min="1" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none disabled:cursor-not-allowed disabled:opacity-50" @input="onHeightInput" />
               </label>
             </div>
             <label class="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
-              <input v-model="keepAspect" type="checkbox" class="accent-[#007AFF]" />
+              <input v-model="keepAspect" type="checkbox" class="accent-[#007AFF]" @change="syncResizeDimensionsToCrop" />
               锁定比例 Keep Aspect Ratio
             </label>
             <div v-if="cropRect" class="rounded-xl liquid-glass-inset p-3 text-[0.6875rem] text-zinc-400 space-y-1">
@@ -122,13 +122,13 @@
             <button type="button" class="w-full rounded-xl liquid-glass-inset px-3 py-2 text-xs text-zinc-300 hover:text-white" @click="resetCrop">重置裁剪选区</button>
           </div>
 
-          <div v-else-if="activeTab === 'privacy'" class="space-y-4">
+          <div v-else-if="activeTab === 'privacy'" class="relative z-[200] space-y-4">
             <div>
               <div class="flex items-center gap-2">
                 <h2 class="text-sm font-semibold text-white text-glass">隐私水印与打码</h2>
-                <span class="relative inline-flex group">
+                <span class="relative z-[300] inline-flex group">
                   <button type="button" class="w-4 h-4 rounded-full border border-white/30 text-[0.625rem] text-zinc-300 leading-none hover:text-white hover:border-white/70" aria-label="盲水印说明">?</button>
-                  <span role="tooltip" class="pointer-events-none absolute left-0 top-full mt-2 z-[100] w-72 rounded-xl bg-zinc-950/95 px-3 py-2 text-[0.6875rem] leading-relaxed text-zinc-200 opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">盲水印会把半透明的斜向文字平铺写入导出图片；遮罩支持马赛克、黑色/白色遮盖与柔焦模糊，每个遮罩独立记录自己的方式，绘制时即可看到真实效果。</span>
+                  <span role="tooltip" class="pointer-events-none absolute left-0 top-full mt-2 z-[9999] w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-white/15 bg-zinc-950/95 px-3 py-2 text-[0.6875rem] leading-relaxed text-zinc-200 opacity-0 shadow-2xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">盲水印会把半透明的斜向文字平铺写入导出图片；遮罩支持马赛克、黑色/白色遮盖与柔焦模糊，每个遮罩独立记录自己的方式，绘制时即可看到真实效果。</span>
                 </span>
               </div>
               <p class="text-[0.6875rem] text-zinc-500 mt-1">在预览图上拖拽矩形，导出时按物理像素映射。</p>
@@ -138,19 +138,33 @@
               <textarea v-model="watermarkText" rows="3" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none resize-none" />
             </label>
             <label class="block text-xs text-zinc-400">遮罩方式
-              <select v-model="maskStyle" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white bg-transparent outline-none">
+              <select v-model="maskStyle" class="liquid-glass-select mt-2 w-full rounded-xl px-3 py-2 text-white outline-none">
                 <option value="mosaic">马赛克</option>
                 <option value="black">黑色遮盖</option>
                 <option value="white">白色遮盖</option>
                 <option value="blur">柔焦模糊</option>
               </select>
             </label>
-            <div class="rounded-xl liquid-glass-inset p-3 text-[0.6875rem] text-zinc-400">动态块大小：{{ dynamicMosaicBlock }} px · 已添加 {{ masks.length }} 个遮罩</div>
-            <div class="grid grid-cols-3 gap-2">
-              <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!undoStack.length" @click="undoMask">← 撤回</button>
-              <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!redoStack.length" @click="redoMask">重做 →</button>
-              <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!masks.length" @click="clearMasks">清除全部</button>
-            </div>
+             <div class="rounded-xl liquid-glass-inset p-3 text-[0.6875rem] text-zinc-400">动态块大小：{{ dynamicMosaicBlock }} px · 已添加 {{ masks.length }} 个遮罩</div>
+             <div class="grid grid-cols-3 gap-2">
+               <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-base leading-none text-zinc-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-40" :disabled="!undoStack.length" aria-label="撤回" title="撤回" @click="undoMask">←</button>
+               <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-base leading-none text-zinc-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-40" :disabled="!redoStack.length" aria-label="重做" title="重做" @click="redoMask">→</button>
+               <button type="button" class="rounded-xl liquid-glass-inset px-2 py-2 text-xs text-zinc-300 hover:text-white" :disabled="!masks.length" @click="clearMasks">清除全部</button>
+             </div>
+             <div v-if="selectedMask" class="rounded-xl liquid-glass-inset p-3 space-y-2">
+               <div class="flex items-center justify-between gap-2 text-[0.6875rem]">
+                 <span class="text-zinc-300">选中遮罩 #{{ (selectedMaskIndex ?? 0) + 1 }}</span>
+                 <span class="text-zinc-500">{{ Math.round(selectedMask.rotation) }}°</span>
+               </div>
+               <label class="block text-[0.6875rem] text-zinc-400">旋转方向
+                 <input :value="selectedMask.rotation" type="range" min="-180" max="180" step="1" class="mt-2 w-full accent-[#007AFF]" @input="onMaskRotationInput" />
+               </label>
+               <div class="grid grid-cols-2 gap-2">
+                 <button type="button" class="rounded-lg bg-white/5 px-2 py-1.5 text-[0.6875rem] text-zinc-300 hover:text-white" @click="rotateSelectedMask(-15)">↺ 左转 15°</button>
+                 <button type="button" class="rounded-lg bg-white/5 px-2 py-1.5 text-[0.6875rem] text-zinc-300 hover:text-white" @click="rotateSelectedMask(15)">↻ 右转 15°</button>
+               </div>
+               <p class="text-[0.625rem] leading-relaxed text-zinc-500">拖动遮罩内部可移动，拖动四角可调整大小，拖动圆形手柄可旋转。</p>
+             </div>
           </div>
 
           <div v-else-if="activeTab === 'convert'" class="space-y-4">
@@ -159,7 +173,7 @@
               <p class="text-[0.6875rem] text-zinc-500 mt-1">重绘会剥离 GPS 等原始 EXIF 信息。</p>
             </div>
             <label class="block text-xs text-zinc-400">导出格式
-              <select v-model="outputFormat" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white bg-transparent outline-none">
+              <select v-model="outputFormat" class="liquid-glass-select mt-2 w-full rounded-xl px-3 py-2 text-white outline-none">
                 <option value="image/jpeg">JPG</option>
                 <option value="image/png">PNG</option>
                 <option value="image/webp">WebP</option>
@@ -167,16 +181,29 @@
               </select>
             </label>
             <label v-if="outputFormat === 'image/jpeg'" class="block text-xs text-zinc-400">EXIF 处理
-              <select v-model="exifPolicy" class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white bg-transparent outline-none">
+                <select v-model="exifPolicy" class="liquid-glass-select mt-2 w-full rounded-xl px-3 py-2 text-white outline-none">
                 <option value="strip">剥离 EXIF（默认）</option>
                 <option value="keep">保留原 EXIF</option>
                 <option value="edit">编辑 EXIF</option>
               </select>
             </label>
             <div v-if="exifPolicy === 'edit'" class="space-y-2 rounded-xl liquid-glass-inset p-3">
-              <label class="block text-xs text-zinc-400">拍摄时间（YYYY:MM:DD HH:MM:SS）
-                <input v-model="exifEditDate" type="text" placeholder="2026:08:26 12:00:00" class="mt-1 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none" />
+              <label class="block text-xs text-zinc-400">拍摄时间
+                <input
+                  v-model="exifEditDate"
+                  type="datetime-local"
+                  step="1"
+                  inputmode="none"
+                  autocomplete="off"
+                  aria-label="拍摄时间"
+                  class="mt-1 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none"
+                  @keydown="blockDateTimeKeyboardInput"
+                  @beforeinput.prevent
+                  @paste.prevent
+                  @drop.prevent
+                />
               </label>
+              <p class="text-[0.625rem] leading-relaxed text-zinc-500">使用日历和时间选择器，导出时会转换为 EXIF 标准时间格式。</p>
               <label class="block text-xs text-zinc-400">相机厂商
                 <input v-model="exifEditMake" type="text" placeholder="Apple" class="mt-1 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none" />
               </label>
@@ -219,19 +246,20 @@
             </div>
             <div class="flex items-center gap-2">
               <button type="button" class="rounded-xl px-3 py-2 text-xs" :class="viewMode === 'original' ? 'bg-ios-blue text-white' : 'liquid-glass-inset text-zinc-400'" @click="viewMode = 'original'">原图</button>
-              <button type="button" class="rounded-xl px-3 py-2 text-xs" :disabled="!processedUrl" :class="viewMode === 'processed' ? 'bg-ios-blue text-white' : 'liquid-glass-inset text-zinc-400'" @click="viewMode = 'processed'">处理后</button>
-              <button v-if="processedUrl" type="button" class="btn-ios btn-ios-glass py-2 px-3 text-xs" @click="downloadProcessed"><IconDownload class="w-4 h-4" />下载</button>
+              <button type="button" class="rounded-xl px-3 py-2 text-xs" :class="viewMode === 'editing' ? 'bg-ios-blue text-white' : 'liquid-glass-inset text-zinc-400'" @click="viewMode = 'editing'">编辑预览</button>
+              <button type="button" class="rounded-xl px-3 py-2 text-xs" :disabled="!hasCurrentProcessed" :class="viewMode === 'processed' ? 'bg-ios-blue text-white' : 'liquid-glass-inset text-zinc-400'" @click="viewMode = 'processed'">处理后</button>
+              <button v-if="hasCurrentProcessed" type="button" class="btn-ios btn-ios-glass py-2 px-3 text-xs" @click="downloadProcessed"><IconDownload class="w-4 h-4" />下载</button>
             </div>
           </div>
 
           <div class="min-h-[360px] rounded-[20px] bg-black/20 border border-white/10 flex items-center justify-center overflow-hidden p-3">
             <div v-if="!currentImage" class="text-center text-zinc-500 text-sm">导入图片后开始处理</div>
-            <img v-else-if="viewMode === 'processed' && processedUrl" :src="processedUrl" alt="处理结果" class="max-w-full max-h-[600px] object-contain" />
+            <img v-else-if="viewMode === 'processed' && hasCurrentProcessed" :src="processedUrl" alt="处理结果" class="max-w-full max-h-[600px] object-contain" />
             <canvas
               v-else
               ref="previewCanvas"
               class="max-w-full max-h-[600px] object-contain touch-none select-none"
-              :class="activeTab === 'compose' ? 'cursor-default' : 'cursor-crosshair'"
+              :class="activeTab === 'privacy' || activeTab === 'resize' ? 'cursor-crosshair' : 'cursor-default'"
               @pointerdown="onPreviewPointerDown"
               @pointermove="onPreviewPointerMove"
               @pointerup="onPreviewPointerUp"
@@ -247,7 +275,7 @@
             </div>
             <div class="rounded-[16px] liquid-glass-inset p-3">
               <p class="text-zinc-500 mb-1">处理后</p>
-              <p v-if="processedBlob" class="text-white">{{ processedWidth }} × {{ processedHeight }} · {{ formatBytes(processedBlob.size) }} <span class="text-ios-green">{{ sizeDeltaLabel }}</span></p>
+              <p v-if="hasCurrentProcessed && processedBlob" class="text-white">{{ processedWidth }} × {{ processedHeight }} · {{ formatBytes(processedBlob.size) }} <span class="text-ios-green">{{ sizeDeltaLabel }}</span></p>
               <p v-else class="text-zinc-500">等待处理</p>
             </div>
           </div>
@@ -301,8 +329,43 @@ type ComposeDirection = 'vertical' | 'horizontal';
 
 interface Point { x: number; y: number }
 interface Rect { x: number; y: number; width: number; height: number }
-interface Mask { rect: Rect; style: MaskStyle }
+interface Mask { rect: Rect; style: MaskStyle; rotation: number }
 interface Preset { id: string; label: string; width: number; height: number }
+interface GridTile { id: string; name: string; blob: Blob; url: string }
+interface MaskInteractionState {
+  index: number;
+  startPoint: Point;
+  initialMask: Mask;
+  initialMasks: Mask[];
+  startPointerAngle: number;
+}
+interface ImageEditState {
+  targetKB: number;
+  selectedPreset: string;
+  keepAspect: boolean;
+  outputWidth: number;
+  outputHeight: number;
+  watermarkEnabled: boolean;
+  watermarkText: string;
+  maskStyle: MaskStyle;
+  exifPolicy: 'strip' | 'keep' | 'edit';
+  exifEditDate: string;
+  exifEditMake: string;
+  exifEditModel: string;
+  outputFormat: string;
+  outputQuality: number;
+  cropRect: Rect;
+  masks: Mask[];
+  undoStack: Mask[][];
+  redoStack: Mask[][];
+  viewMode: 'original' | 'editing' | 'processed';
+  processedBlob: Blob | null;
+  processedUrl: string;
+  processedTab: StudioTab | null;
+  processedWidth: number;
+  processedHeight: number;
+  gridTiles: GridTile[];
+}
 interface StudioImage {
   id: string;
   file: File;
@@ -313,8 +376,8 @@ interface StudioImage {
   naturalHeight: number;
   element: HTMLImageElement;
   exif: Record<string, any> | null;
+  edit: ImageEditState;
 }
-interface GridTile { id: string; name: string; blob: Blob; url: string }
 
 useHead({ title: '全能极速图片处理工作台 - proHub' });
 
@@ -341,7 +404,7 @@ const dragging = ref(false);
 const isProcessing = ref(false);
 const errorMessage = ref('');
 const toastMessage = ref('');
-const viewMode = ref<'original' | 'processed'>('original');
+const viewMode = ref<'original' | 'editing' | 'processed'>('original');
 const previewCanvas = ref<HTMLCanvasElement | null>(null);
 const targetKB = ref(200);
 const selectedPreset = ref('free');
@@ -366,17 +429,29 @@ const undoStack = ref<Mask[][]>([]);
 const redoStack = ref<Mask[][]>([]);
 const temporaryMaskRect = ref<Rect | null>(null);
 const dragStart = ref<Point | null>(null);
-const interactionMode = ref<'crop' | 'mask' | null>(null);
+const interactionMode = ref<'crop' | 'draw-mask' | 'move-mask' | 'resize-mask' | 'rotate-mask' | null>(null);
+const maskInteraction = ref<MaskInteractionState | null>(null);
+const selectedMaskIndex = ref<number | null>(null);
 const processedBlob = ref<Blob | null>(null);
 const processedUrl = ref('');
+const processedTab = ref<StudioTab | null>(null);
 const processedWidth = ref(0);
 const processedHeight = ref(0);
 const gridTiles = ref<GridTile[]>([]);
+let restoringState = false;
 
 const currentImage = computed(() => files.value.find((image) => image.id === selectedId.value) || null);
 const selectedPresetData = computed(() => presets.find((preset) => preset.id === selectedPreset.value) || null);
 const dynamicMosaicBlock = computed(() => currentImage.value ? Math.max(6, Math.round(Math.max(currentImage.value.naturalWidth, currentImage.value.naturalHeight) / 100)) : 15);
 const primaryActionLabel = computed(() => activeTab.value === 'compress' ? '压缩并预览' : activeTab.value === 'compose' ? '生成长图' : '处理并预览');
+const hasCurrentProcessed = computed(() => Boolean(
+  currentImage.value
+  && processedBlob.value
+  && processedUrl.value
+  && processedTab.value === activeTab.value
+  && currentImage.value.edit.processedUrl === processedUrl.value,
+));
+const selectedMask = computed(() => selectedMaskIndex.value === null ? null : masks.value[selectedMaskIndex.value] || null);
 const sizeDeltaLabel = computed(() => {
   if (!currentImage.value || !processedBlob.value) return '';
   return `${Math.round(processedBlob.value.size / currentImage.value.size * 100)}%`;
@@ -410,6 +485,36 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
 }
 
+function createImageEditState(width: number, height: number): ImageEditState {
+  return {
+    targetKB: 200,
+    selectedPreset: 'free',
+    keepAspect: true,
+    outputWidth: width,
+    outputHeight: height,
+    watermarkEnabled: true,
+    watermarkText: '仅限 XX 办理业务使用，他用无效',
+    maskStyle: 'mosaic',
+    exifPolicy: 'strip',
+    exifEditDate: '',
+    exifEditMake: '',
+    exifEditModel: '',
+    outputFormat: 'image/jpeg',
+    outputQuality: 0.92,
+    cropRect: { x: 0, y: 0, width, height },
+    masks: [],
+    undoStack: [],
+    redoStack: [],
+    viewMode: 'original',
+    processedBlob: null,
+    processedUrl: '',
+    processedTab: null,
+    processedWidth: 0,
+    processedHeight: 0,
+    gridTiles: [],
+  };
+}
+
 function normalizeRect(rect: Rect): Rect {
   const image = currentImage.value;
   if (!image) return rect;
@@ -432,12 +537,19 @@ function centerCropForAspect(aspect: number): Rect {
   const image = currentImage.value;
   if (!image || !Number.isFinite(aspect) || aspect <= 0) return fullImageRect();
   let width = image.naturalWidth;
-  let height = Math.round(width / aspect);
+  let height = width / aspect;
   if (height > image.naturalHeight) {
     height = image.naturalHeight;
-    width = Math.round(height * aspect);
+    width = height * aspect;
   }
-  return { x: Math.round((image.naturalWidth - width) / 2), y: Math.round((image.naturalHeight - height) / 2), width, height };
+  width = clamp(Math.round(width), 1, image.naturalWidth);
+  height = clamp(Math.round(height), 1, image.naturalHeight);
+  return {
+    x: Math.round((image.naturalWidth - width) / 2),
+    y: Math.round((image.naturalHeight - height) / 2),
+    width,
+    height,
+  };
 }
 
 function setStatus(message: string): void {
@@ -445,33 +557,19 @@ function setStatus(message: string): void {
   window.setTimeout(() => { if (toastMessage.value === message) toastMessage.value = ''; }, 2800);
 }
 
-function resetProcessingState(): void {
-  if (processedUrl.value) URL.revokeObjectURL(processedUrl.value);
-  processedUrl.value = '';
-  processedBlob.value = null;
-  processedWidth.value = 0;
-  processedHeight.value = 0;
-  viewMode.value = 'original';
-}
-
 function clearGridTiles(): void {
   gridTiles.value.forEach((tile) => URL.revokeObjectURL(tile.url));
   gridTiles.value = [];
+  if (currentImage.value) currentImage.value.edit.gridTiles = [];
 }
 
-function initializeImageState(): void {
-  const image = currentImage.value;
-  resetProcessingState();
-  clearGridTiles();
-  masks.value = [];
-  undoStack.value = [];
-  redoStack.value = [];
-  temporaryMaskRect.value = null;
-  temporaryCropRect.value = null;
-  cropRect.value = image ? fullImageRect() : null;
-  outputWidth.value = image?.naturalWidth || 0;
-  outputHeight.value = image?.naturalHeight || 0;
+function resetEditorRefs(): void {
+  restoringState = true;
+  targetKB.value = 200;
   selectedPreset.value = 'free';
+  keepAspect.value = true;
+  outputWidth.value = 0;
+  outputHeight.value = 0;
   watermarkEnabled.value = true;
   watermarkText.value = '仅限 XX 办理业务使用，他用无效';
   maskStyle.value = 'mosaic';
@@ -479,10 +577,109 @@ function initializeImageState(): void {
   exifEditDate.value = '';
   exifEditMake.value = '';
   exifEditModel.value = '';
+  outputFormat.value = 'image/jpeg';
+  outputQuality.value = 0.92;
+  viewMode.value = 'original';
+  cropRect.value = null;
+  masks.value = [];
+  undoStack.value = [];
+  redoStack.value = [];
+  selectedMaskIndex.value = null;
+  maskInteraction.value = null;
+  processedBlob.value = null;
+  processedUrl.value = '';
+  processedTab.value = null;
+  processedWidth.value = 0;
+  processedHeight.value = 0;
+  gridTiles.value = [];
+  void nextTick(() => { restoringState = false; });
+}
+
+function saveImageState(imageId: string | null): void {
+  const image = files.value.find((item) => item.id === imageId);
+  if (!image) return;
+  image.edit = {
+    ...image.edit,
+    targetKB: Number(targetKB.value) || 200,
+    selectedPreset: selectedPreset.value,
+    keepAspect: keepAspect.value,
+    outputWidth: Math.max(1, Math.round(Number(outputWidth.value) || image.naturalWidth)),
+    outputHeight: Math.max(1, Math.round(Number(outputHeight.value) || image.naturalHeight)),
+    watermarkEnabled: watermarkEnabled.value,
+    watermarkText: watermarkText.value,
+    maskStyle: maskStyle.value,
+    exifPolicy: exifPolicy.value,
+    exifEditDate: exifEditDate.value,
+    exifEditMake: exifEditMake.value,
+    exifEditModel: exifEditModel.value,
+    outputFormat: outputFormat.value,
+    outputQuality: outputQuality.value,
+    cropRect: cropRect.value ? { ...cropRect.value } : fullImageRect(),
+    masks: cloneMasks(masks.value),
+    undoStack: cloneMaskHistory(undoStack.value),
+    redoStack: cloneMaskHistory(redoStack.value),
+    viewMode: viewMode.value,
+    processedBlob: processedBlob.value,
+    processedUrl: processedUrl.value,
+    processedTab: processedTab.value,
+    processedWidth: processedWidth.value,
+    processedHeight: processedHeight.value,
+    gridTiles: gridTiles.value,
+  };
+}
+
+function loadImageState(image: StudioImage): void {
+  if (!image.edit) image.edit = createImageEditState(image.naturalWidth, image.naturalHeight);
+  restoringState = true;
+  const state = image.edit;
+  targetKB.value = state.targetKB;
+  selectedPreset.value = state.selectedPreset;
+  keepAspect.value = state.keepAspect;
+  outputWidth.value = state.outputWidth;
+  outputHeight.value = state.outputHeight;
+  watermarkEnabled.value = state.watermarkEnabled;
+  watermarkText.value = state.watermarkText;
+  maskStyle.value = state.maskStyle;
+  exifPolicy.value = state.exifPolicy;
+  exifEditDate.value = toDateTimeLocalInput(state.exifEditDate);
+  exifEditMake.value = state.exifEditMake;
+  exifEditModel.value = state.exifEditModel;
+  outputFormat.value = state.outputFormat;
+  outputQuality.value = state.outputQuality;
+  processedBlob.value = state.processedBlob;
+  processedUrl.value = state.processedUrl;
+  processedTab.value = state.processedTab || null;
+  viewMode.value = state.processedUrl && state.processedTab ? state.viewMode : 'original';
+  cropRect.value = state.cropRect ? { ...state.cropRect } : fullImageRect();
+  masks.value = cloneMasks(state.masks);
+  undoStack.value = cloneMaskHistory(state.undoStack);
+  redoStack.value = cloneMaskHistory(state.redoStack);
+  processedWidth.value = state.processedWidth;
+  processedHeight.value = state.processedHeight;
+  gridTiles.value = state.gridTiles;
+  void nextTick(() => { restoringState = false; });
+}
+
+function disposeImageState(image: StudioImage): void {
+  if (image.edit?.processedUrl) URL.revokeObjectURL(image.edit.processedUrl);
+  image.edit?.gridTiles.forEach((tile) => URL.revokeObjectURL(tile.url));
+}
+
+function initializeImageState(): void {
+  const image = currentImage.value;
+  temporaryMaskRect.value = null;
+  temporaryCropRect.value = null;
+  dragStart.value = null;
+  interactionMode.value = null;
+  selectedMaskIndex.value = null;
+  maskInteraction.value = null;
+  if (image) loadImageState(image);
+  else resetEditorRefs();
   nextTick(drawPreview);
 }
 
 function selectImage(imageId: string): void {
+  if (selectedId.value !== imageId) saveImageState(selectedId.value);
   selectedId.value = imageId;
 }
 
@@ -490,6 +687,8 @@ function removeImage(imageId: string): void {
   const imageIndex = files.value.findIndex((image) => image.id === imageId);
   const image = files.value[imageIndex];
   if (!image) return;
+  saveImageState(selectedId.value);
+  disposeImageState(image);
   URL.revokeObjectURL(image.sourceUrl);
   files.value.splice(imageIndex, 1);
   if (selectedId.value === imageId) selectedId.value = files.value[Math.max(0, imageIndex - 1)]?.id || null;
@@ -497,7 +696,9 @@ function removeImage(imageId: string): void {
 }
 
 function clearAll(): void {
+  saveImageState(selectedId.value);
   files.value.forEach((image) => URL.revokeObjectURL(image.sourceUrl));
+  files.value.forEach(disposeImageState);
   files.value = [];
   selectedId.value = null;
   initializeImageState();
@@ -541,6 +742,7 @@ async function decodeImageFile(file: File): Promise<StudioImage> {
     naturalHeight: element.naturalHeight,
     element,
     exif: exifData,
+    edit: createImageEditState(element.naturalWidth, element.naturalHeight),
   };
 }
 
@@ -558,9 +760,9 @@ async function addFiles(fileList: File[]): Promise<void> {
       errorMessage.value = error instanceof Error ? error.message : '图片读取失败';
     }
   }
-  if (files.value.length === addedImages.length || addedImages.length > 0) {
+  if (addedImages.length > 0) {
+    saveImageState(selectedId.value);
     selectedId.value = addedImages[0].id;
-    initializeImageState();
   }
   if (currentImage.value) nextTick(drawPreview);
 }
@@ -578,6 +780,7 @@ function onDrop(event: DragEvent): void {
 
 function switchTab(tab: StudioTab): void {
   activeTab.value = tab;
+  viewMode.value = 'editing';
   if (tab === 'resize' && currentImage.value && !cropRect.value) cropRect.value = fullImageRect();
   nextTick(drawPreview);
 }
@@ -598,12 +801,45 @@ function applyPreset(): void {
   nextTick(drawPreview);
 }
 
+function resizeAspect(): number {
+  const preset = selectedPresetData.value;
+  if (preset) return preset.width / preset.height;
+  const crop = cropRect.value;
+  if (crop && crop.width > 0 && crop.height > 0) return crop.width / crop.height;
+  const image = currentImage.value;
+  return image ? image.naturalWidth / image.naturalHeight : 1;
+}
+
+function getResizeOutputSize(image: StudioImage, crop: Rect): { width: number; height: number } {
+  const preset = selectedPresetData.value;
+  if (preset) return { width: preset.width, height: preset.height };
+  const width = Math.max(1, Math.round(Number(outputWidth.value) || crop.width || image.naturalWidth));
+  if (!keepAspect.value) {
+    return {
+      width,
+      height: Math.max(1, Math.round(Number(outputHeight.value) || crop.height || image.naturalHeight)),
+    };
+  }
+  return {
+    width,
+    height: Math.max(1, Math.round(width / Math.max(crop.width / Math.max(crop.height, 1), 0.0001))),
+  };
+}
+
+function syncResizeDimensionsToCrop(): void {
+  const image = currentImage.value;
+  const crop = cropRect.value;
+  if (!image || !crop) return;
+  const size = getResizeOutputSize(image, normalizeRect(crop));
+  outputWidth.value = size.width;
+  outputHeight.value = size.height;
+}
+
 function onWidthInput(): void {
   const width = Math.max(1, Math.round(Number(outputWidth.value) || 1));
   outputWidth.value = width;
   if (keepAspect.value) {
-    const aspect = selectedPresetData.value ? selectedPresetData.value.width / selectedPresetData.value.height : (currentImage.value ? currentImage.value.naturalWidth / currentImage.value.naturalHeight : 1);
-    outputHeight.value = Math.max(1, Math.round(width / aspect));
+    outputHeight.value = Math.max(1, Math.round(width / resizeAspect()));
   }
 }
 
@@ -611,8 +847,7 @@ function onHeightInput(): void {
   const height = Math.max(1, Math.round(Number(outputHeight.value) || 1));
   outputHeight.value = height;
   if (keepAspect.value) {
-    const aspect = selectedPresetData.value ? selectedPresetData.value.width / selectedPresetData.value.height : (currentImage.value ? currentImage.value.naturalWidth / currentImage.value.naturalHeight : 1);
-    outputWidth.value = Math.max(1, Math.round(height * aspect));
+    outputWidth.value = Math.max(1, Math.round(height * resizeAspect()));
   }
 }
 
@@ -650,14 +885,158 @@ function rectFromPoints(start: Point, end: Point, aspect?: number): Rect {
   return normalizeRect({ x: start.x, y: start.y, width: signedWidth, height: signedHeight });
 }
 
+function normalizeRotation(value: number): number {
+  let rotation = value % 360;
+  if (rotation > 180) rotation -= 360;
+  if (rotation <= -180) rotation += 360;
+  return rotation;
+}
+
+function rotatePoint(point: Point, center: Point, degrees: number): Point {
+  const radians = degrees * Math.PI / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  const offsetX = point.x - center.x;
+  const offsetY = point.y - center.y;
+  return {
+    x: center.x + offsetX * cosine - offsetY * sine,
+    y: center.y + offsetX * sine + offsetY * cosine,
+  };
+}
+
+function cloneMask(mask: Mask): Mask {
+  return {
+    rect: { ...mask.rect },
+    style: mask.style,
+    rotation: normalizeRotation(mask.rotation || 0),
+  };
+}
+
+function maskCenter(mask: Mask): Point {
+  return {
+    x: mask.rect.x + mask.rect.width / 2,
+    y: mask.rect.y + mask.rect.height / 2,
+  };
+}
+
+function maskCorners(mask: Mask): Point[] {
+  const center = maskCenter(mask);
+  return [
+    rotatePoint({ x: mask.rect.x, y: mask.rect.y }, center, mask.rotation),
+    rotatePoint({ x: mask.rect.x + mask.rect.width, y: mask.rect.y }, center, mask.rotation),
+    rotatePoint({ x: mask.rect.x + mask.rect.width, y: mask.rect.y + mask.rect.height }, center, mask.rotation),
+    rotatePoint({ x: mask.rect.x, y: mask.rect.y + mask.rect.height }, center, mask.rotation),
+  ];
+}
+
+function maskRotationHandle(mask: Mask): Point {
+  const center = maskCenter(mask);
+  const distance = Math.max(28, Math.min(mask.rect.width, mask.rect.height) * 0.2);
+  return rotatePoint({ x: center.x, y: mask.rect.y - distance }, center, mask.rotation);
+}
+
+function maskHandleRadius(mask: Mask): number {
+  const image = currentImage.value;
+  const imageScale = image ? Math.max(image.naturalWidth, image.naturalHeight) / 80 : 16;
+  return Math.max(16, Math.min(42, imageScale));
+}
+
+function distanceBetween(first: Point, second: Point): number {
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function isPointInMask(point: Point, mask: Mask, padding = 0): boolean {
+  const center = maskCenter(mask);
+  const alignedPoint = rotatePoint(point, center, -mask.rotation);
+  return Math.abs(alignedPoint.x - center.x) <= mask.rect.width / 2 + padding
+    && Math.abs(alignedPoint.y - center.y) <= mask.rect.height / 2 + padding;
+}
+
+function getMaskHandle(point: Point, mask: Mask): 'delete' | 'rotate' | 'resize' | null {
+  const radius = maskHandleRadius(mask);
+  if (distanceBetween(point, maskDeleteHandle(mask)) <= maskDeleteRadius(mask)) return 'delete';
+  if (distanceBetween(point, maskRotationHandle(mask)) <= radius) return 'rotate';
+  if (maskCorners(mask).some((corner) => distanceBetween(point, corner) <= radius)) return 'resize';
+  return null;
+}
+
+function masksAreEqual(first: Mask[], second: Mask[]): boolean {
+  if (first.length !== second.length) return false;
+  return first.every((mask, index) => {
+    const other = second[index];
+    return mask.style === other.style
+      && normalizeRotation(mask.rotation) === normalizeRotation(other.rotation)
+      && mask.rect.x === other.rect.x
+      && mask.rect.y === other.rect.y
+      && mask.rect.width === other.rect.width
+      && mask.rect.height === other.rect.height;
+  });
+}
+
+function deleteMaskAt(index: number): void {
+  if (!masks.value[index]) return;
+  undoStack.value.push(cloneMasks(masks.value));
+  masks.value.splice(index, 1);
+  redoStack.value = [];
+  if (selectedMaskIndex.value === index) {
+    selectedMaskIndex.value = masks.value.length ? Math.min(index, masks.value.length - 1) : null;
+  } else if (selectedMaskIndex.value !== null && selectedMaskIndex.value > index) {
+    selectedMaskIndex.value -= 1;
+  }
+  nextTick(drawPreview);
+}
+
 function onPreviewPointerDown(event: PointerEvent): void {
-  if (!currentImage.value || activeTab.value === 'compose' || viewMode.value !== 'original') return;
+  if (!currentImage.value || (activeTab.value !== 'resize' && activeTab.value !== 'privacy') || viewMode.value === 'processed') return;
   const point = getCanvasPoint(event);
   if (!point) return;
-  dragStart.value = point;
-  interactionMode.value = activeTab.value === 'resize' ? 'crop' : 'mask';
-  if (interactionMode.value === 'crop') temporaryCropRect.value = { x: point.x, y: point.y, width: 1, height: 1 };
-  else temporaryMaskRect.value = { x: point.x, y: point.y, width: 1, height: 1 };
+  if (viewMode.value === 'original') {
+    viewMode.value = 'editing';
+    drawPreview();
+  }
+  if (activeTab.value === 'resize') {
+    dragStart.value = point;
+    interactionMode.value = 'crop';
+    temporaryCropRect.value = { x: point.x, y: point.y, width: 1, height: 1 };
+  } else {
+    const selected = selectedMaskIndex.value === null ? null : masks.value[selectedMaskIndex.value];
+    const selectedHandle = selected ? getMaskHandle(point, selected) : null;
+    if (selected && selectedHandle) {
+      if (selectedHandle === 'delete') {
+        deleteMaskAt(selectedMaskIndex.value as number);
+        return;
+      }
+      dragStart.value = point;
+      interactionMode.value = selectedHandle === 'rotate' ? 'rotate-mask' : 'resize-mask';
+      maskInteraction.value = {
+        index: selectedMaskIndex.value as number,
+        startPoint: point,
+        initialMask: cloneMask(selected),
+        initialMasks: cloneMasks(masks.value),
+        startPointerAngle: Math.atan2(point.y - maskCenter(selected).y, point.x - maskCenter(selected).x) * 180 / Math.PI,
+      };
+    } else {
+      const hitIndex = [...masks.value.keys()].reverse().find((index) => isPointInMask(point, masks.value[index], maskHandleRadius(masks.value[index]) / 2));
+      if (hitIndex !== undefined) {
+        selectedMaskIndex.value = hitIndex;
+        dragStart.value = point;
+        interactionMode.value = 'move-mask';
+        maskInteraction.value = {
+          index: hitIndex,
+          startPoint: point,
+          initialMask: cloneMask(masks.value[hitIndex]),
+          initialMasks: cloneMasks(masks.value),
+          startPointerAngle: 0,
+        };
+        drawPreview();
+      } else {
+        selectedMaskIndex.value = null;
+        dragStart.value = point;
+        interactionMode.value = 'draw-mask';
+        temporaryMaskRect.value = { x: point.x, y: point.y, width: 1, height: 1 };
+      }
+    }
+  }
   (event.currentTarget as HTMLCanvasElement).setPointerCapture(event.pointerId);
 }
 
@@ -665,29 +1044,79 @@ function onPreviewPointerMove(event: PointerEvent): void {
   if (!dragStart.value || !interactionMode.value) return;
   const point = getCanvasPoint(event);
   if (!point) return;
-  const aspect = interactionMode.value === 'crop' && selectedPresetData.value ? selectedPresetData.value.width / selectedPresetData.value.height : undefined;
-  const nextRect = rectFromPoints(dragStart.value, point, aspect);
-  if (interactionMode.value === 'crop') temporaryCropRect.value = nextRect;
-  else temporaryMaskRect.value = nextRect;
+  if (interactionMode.value === 'crop' || interactionMode.value === 'draw-mask') {
+    const aspect = interactionMode.value === 'crop' && selectedPresetData.value ? selectedPresetData.value.width / selectedPresetData.value.height : undefined;
+    const nextRect = rectFromPoints(dragStart.value, point, aspect);
+    if (interactionMode.value === 'crop') temporaryCropRect.value = nextRect;
+    else temporaryMaskRect.value = nextRect;
+  } else {
+    const interaction = maskInteraction.value;
+    const image = currentImage.value;
+    if (!interaction || !image) return;
+    const nextMask = cloneMask(interaction.initialMask);
+    const center = maskCenter(interaction.initialMask);
+    if (interactionMode.value === 'move-mask') {
+      const deltaX = point.x - interaction.startPoint.x;
+      const deltaY = point.y - interaction.startPoint.y;
+      nextMask.rect.x = clamp(interaction.initialMask.rect.x + deltaX, 0, image.naturalWidth - nextMask.rect.width);
+      nextMask.rect.y = clamp(interaction.initialMask.rect.y + deltaY, 0, image.naturalHeight - nextMask.rect.height);
+    } else if (interactionMode.value === 'resize-mask') {
+      const alignedPoint = rotatePoint(point, center, -interaction.initialMask.rotation);
+      const width = clamp(Math.abs(alignedPoint.x - center.x) * 2, 8, image.naturalWidth);
+      const height = clamp(Math.abs(alignedPoint.y - center.y) * 2, 8, image.naturalHeight);
+      nextMask.rect.width = width;
+      nextMask.rect.height = height;
+      nextMask.rect.x = clamp(center.x - width / 2, 0, image.naturalWidth - width);
+      nextMask.rect.y = clamp(center.y - height / 2, 0, image.naturalHeight - height);
+    } else if (interactionMode.value === 'rotate-mask') {
+      const pointerAngle = Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI;
+      nextMask.rotation = normalizeRotation(interaction.initialMask.rotation + pointerAngle - interaction.startPointerAngle);
+    }
+    masks.value[interaction.index] = nextMask;
+  }
   drawPreview();
 }
 
-function onPreviewPointerUp(): void {
+function onPreviewPointerUp(event?: PointerEvent): void {
   if (interactionMode.value === 'crop' && temporaryCropRect.value && temporaryCropRect.value.width > 2 && temporaryCropRect.value.height > 2) cropRect.value = temporaryCropRect.value;
-  if (interactionMode.value === 'mask' && temporaryMaskRect.value && temporaryMaskRect.value.width > 2 && temporaryMaskRect.value.height > 2) {
+  if (interactionMode.value === 'crop' && cropRect.value) syncResizeDimensionsToCrop();
+  if (interactionMode.value === 'draw-mask' && temporaryMaskRect.value && temporaryMaskRect.value.width > 2 && temporaryMaskRect.value.height > 2) {
     undoStack.value.push(cloneMasks(masks.value));
-    masks.value.push({ rect: temporaryMaskRect.value, style: maskStyle.value });
+    masks.value.push({ rect: temporaryMaskRect.value, style: maskStyle.value, rotation: 0 });
+    redoStack.value = [];
+    selectedMaskIndex.value = masks.value.length - 1;
+  }
+  if (
+    (interactionMode.value === 'move-mask' || interactionMode.value === 'resize-mask' || interactionMode.value === 'rotate-mask')
+    && maskInteraction.value
+    && !masksAreEqual(maskInteraction.value.initialMasks, masks.value)
+  ) {
+    undoStack.value.push(maskInteraction.value.initialMasks);
     redoStack.value = [];
   }
   temporaryCropRect.value = null;
   temporaryMaskRect.value = null;
   dragStart.value = null;
   interactionMode.value = null;
+  maskInteraction.value = null;
+  if (event?.currentTarget instanceof HTMLCanvasElement && event.currentTarget.hasPointerCapture(event.pointerId)) {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
   drawPreview();
 }
 
-function drawMaskOverlay(context: CanvasRenderingContext2D, sourceCanvas: HTMLCanvasElement, mask: Mask, temporary = false): void {
+function drawMaskPath(context: CanvasRenderingContext2D, mask: Mask): void {
+  const corners = maskCorners(mask);
+  context.beginPath();
+  context.moveTo(corners[0].x, corners[0].y);
+  corners.slice(1).forEach((corner) => context.lineTo(corner.x, corner.y));
+  context.closePath();
+}
+
+function drawMaskEffect(context: CanvasRenderingContext2D, sourceCanvas: HTMLCanvasElement, mask: Mask): void {
   context.save();
+  drawMaskPath(context, mask);
+  context.clip();
   if (mask.style === 'black') {
     context.fillStyle = '#000';
     context.fillRect(mask.rect.x, mask.rect.y, mask.rect.width, mask.rect.height);
@@ -697,12 +1126,72 @@ function drawMaskOverlay(context: CanvasRenderingContext2D, sourceCanvas: HTMLCa
   } else if (mask.style === 'blur') {
     drawBlur(context, sourceCanvas, mask.rect);
   } else {
-    drawMosaic(context, sourceCanvas, mask.rect);
+    drawMosaic(context, sourceCanvas, mask);
   }
+  context.restore();
+}
+
+function maskDeleteHandle(mask: Mask): Point {
+  const center = maskCenter(mask);
+  const topRight = rotatePoint({ x: mask.rect.x + mask.rect.width, y: mask.rect.y }, center, mask.rotation);
+  const directionX = topRight.x - center.x;
+  const directionY = topRight.y - center.y;
+  const distance = Math.max(1, Math.hypot(directionX, directionY));
+  const offset = Math.max(24, maskHandleRadius(mask) * 0.9);
+  return {
+    x: topRight.x + directionX / distance * offset,
+    y: topRight.y + directionY / distance * offset,
+  };
+}
+
+function maskDeleteRadius(mask: Mask): number {
+  return Math.max(18, Math.min(30, maskHandleRadius(mask) * 0.9));
+}
+
+function drawMaskOverlay(context: CanvasRenderingContext2D, sourceCanvas: HTMLCanvasElement, mask: Mask, temporary = false, selected = false): void {
+  drawMaskEffect(context, sourceCanvas, mask);
+  context.save();
+  drawMaskPath(context, mask);
   context.strokeStyle = temporary ? '#007AFF' : 'rgba(255,255,255,0.8)';
   context.lineWidth = Math.max(2, Math.round(Math.max(mask.rect.width, mask.rect.height) / 300));
   context.setLineDash(temporary ? [8, 8] : []);
-  context.strokeRect(mask.rect.x, mask.rect.y, mask.rect.width, mask.rect.height);
+  context.stroke();
+  if (selected && !temporary) {
+    const corners = maskCorners(mask);
+    const rotationHandle = maskRotationHandle(mask);
+    context.setLineDash([]);
+    context.strokeStyle = '#007AFF';
+    context.fillStyle = 'rgba(0,122,255,0.9)';
+    context.lineWidth = Math.max(2, Math.round(Math.max(mask.rect.width, mask.rect.height) / 400));
+    context.beginPath();
+    context.moveTo((corners[0].x + corners[1].x) / 2, (corners[0].y + corners[1].y) / 2);
+    context.lineTo(rotationHandle.x, rotationHandle.y);
+    context.stroke();
+    corners.forEach((corner) => {
+      context.fillRect(corner.x - 7, corner.y - 7, 14, 14);
+    });
+    context.beginPath();
+    context.arc(rotationHandle.x, rotationHandle.y, 10, 0, Math.PI * 2);
+    context.fill();
+    const deleteHandle = maskDeleteHandle(mask);
+    const deleteRadius = maskDeleteRadius(mask);
+    context.fillStyle = '#ff3b30';
+    context.beginPath();
+    context.arc(deleteHandle.x, deleteHandle.y, deleteRadius, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = 'rgba(255,255,255,0.9)';
+    context.lineWidth = Math.max(2, deleteRadius / 8);
+    context.stroke();
+    context.strokeStyle = '#fff';
+    context.lineWidth = Math.max(3, deleteRadius / 5);
+    context.lineCap = 'round';
+    context.beginPath();
+    context.moveTo(deleteHandle.x - deleteRadius * 0.32, deleteHandle.y - deleteRadius * 0.32);
+    context.lineTo(deleteHandle.x + deleteRadius * 0.32, deleteHandle.y + deleteRadius * 0.32);
+    context.moveTo(deleteHandle.x + deleteRadius * 0.32, deleteHandle.y - deleteRadius * 0.32);
+    context.lineTo(deleteHandle.x - deleteRadius * 0.32, deleteHandle.y + deleteRadius * 0.32);
+    context.stroke();
+  }
   context.restore();
 }
 
@@ -738,10 +1227,19 @@ function drawPreview(): void {
   if (!context) return;
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.imageSmoothingEnabled = true;
-  context.drawImage(image.element, 0, 0, image.naturalWidth, image.naturalHeight);
+  const sourceCanvas = document.createElement('canvas');
+  sourceCanvas.width = image.naturalWidth;
+  sourceCanvas.height = image.naturalHeight;
+  const sourceContext = sourceCanvas.getContext('2d');
+  if (!sourceContext) return;
+  sourceContext.imageSmoothingEnabled = true;
+  sourceContext.imageSmoothingQuality = 'high';
+  sourceContext.drawImage(image.element, 0, 0, image.naturalWidth, image.naturalHeight);
+  context.drawImage(sourceCanvas, 0, 0);
+  if (viewMode.value !== 'editing') return;
   if (activeTab.value === 'privacy') {
-    masks.value.forEach((mask) => drawMaskOverlay(context, canvas, mask));
-    if (temporaryMaskRect.value) drawMaskOverlay(context, canvas, { rect: temporaryMaskRect.value, style: maskStyle.value }, true);
+    masks.value.forEach((mask, index) => drawMaskOverlay(context, sourceCanvas, mask, false, index === selectedMaskIndex.value));
+    if (temporaryMaskRect.value) drawMaskOverlay(context, sourceCanvas, { rect: temporaryMaskRect.value, style: maskStyle.value, rotation: 0 }, true);
     drawWatermark(context, canvas.width, canvas.height);
   }
   if (activeTab.value === 'resize') {
@@ -750,9 +1248,12 @@ function drawPreview(): void {
       context.save();
       context.fillStyle = 'rgba(0,0,0,0.48)';
       context.fillRect(0, 0, canvas.width, canvas.height);
-      context.globalCompositeOperation = 'destination-out';
-      context.fillRect(selection.x, selection.y, selection.width, selection.height);
-      context.globalCompositeOperation = 'source-over';
+      context.beginPath();
+      context.rect(selection.x, selection.y, selection.width, selection.height);
+      context.clip();
+      context.drawImage(image.element, 0, 0, image.naturalWidth, image.naturalHeight);
+      context.restore();
+      context.save();
       context.strokeStyle = '#007AFF';
       context.lineWidth = Math.max(3, Math.round(Math.max(canvas.width, canvas.height) / 500));
       context.setLineDash([12, 8]);
@@ -774,32 +1275,81 @@ function renderSourceCanvas(image: StudioImage, crop: Rect, width: number, heigh
   return canvas;
 }
 
-function drawMosaic(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, rect: Rect): void {
-  const pixelWidth = Math.max(1, Math.round(rect.width / dynamicMosaicBlock.value));
-  const pixelHeight = Math.max(1, Math.round(rect.height / dynamicMosaicBlock.value));
+function drawMosaic(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  mask: Mask,
+): void {
+  const pixelWidth = Math.max(1, Math.round(mask.rect.width));
+  const pixelHeight = Math.max(1, Math.round(mask.rect.height));
   const mosaicCanvas = document.createElement('canvas');
   mosaicCanvas.width = pixelWidth;
   mosaicCanvas.height = pixelHeight;
   const mosaicContext = mosaicCanvas.getContext('2d');
-  if (!mosaicContext) return;
-  mosaicContext.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, pixelWidth, pixelHeight);
+  const sourceContext = canvas.getContext('2d');
+  if (!mosaicContext || !sourceContext) return;
+  const sourcePixels = sourceContext.getImageData(0, 0, canvas.width, canvas.height);
+  const blockSize = Math.max(4, dynamicMosaicBlock.value);
+  const center = maskCenter(mask);
+  const scaleX = mask.rect.width / pixelWidth;
+  const scaleY = mask.rect.height / pixelHeight;
+  for (let blockY = 0; blockY < pixelHeight; blockY += blockSize) {
+    for (let blockX = 0; blockX < pixelWidth; blockX += blockSize) {
+      const blockWidth = Math.min(blockSize, pixelWidth - blockX);
+      const blockHeight = Math.min(blockSize, pixelHeight - blockY);
+      const localSample = {
+        x: mask.rect.x + (blockX + blockWidth / 2) * scaleX,
+        y: mask.rect.y + (blockY + blockHeight / 2) * scaleY,
+      };
+      const worldSample = rotatePoint(localSample, center, mask.rotation);
+      const sampleX = clamp(Math.round(worldSample.x), 0, canvas.width - 1);
+      const sampleY = clamp(Math.round(worldSample.y), 0, canvas.height - 1);
+      const pixelOffset = (sampleY * sourcePixels.width + sampleX) * 4;
+      const alpha = sourcePixels.data[pixelOffset + 3] / 255;
+      mosaicContext.fillStyle = `rgba(${sourcePixels.data[pixelOffset]}, ${sourcePixels.data[pixelOffset + 1]}, ${sourcePixels.data[pixelOffset + 2]}, ${alpha})`;
+      mosaicContext.fillRect(blockX, blockY, blockWidth, blockHeight);
+    }
+  }
   context.save();
   context.imageSmoothingEnabled = false;
-  context.drawImage(mosaicCanvas, 0, 0, pixelWidth, pixelHeight, rect.x, rect.y, rect.width, rect.height);
+  context.translate(center.x, center.y);
+  context.rotate(mask.rotation * Math.PI / 180);
+  context.drawImage(
+    mosaicCanvas,
+    0,
+    0,
+    pixelWidth,
+    pixelHeight,
+    -mask.rect.width / 2,
+    -mask.rect.height / 2,
+    mask.rect.width,
+    mask.rect.height,
+  );
   context.restore();
 }
 
-function drawBlur(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, rect: Rect): void {
-  const radius = Math.max(2, Math.round(Math.min(rect.width, rect.height) / 30));
+function drawBlur(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  sourceRect: Rect,
+): void {
+  const radius = Math.max(2, Math.round(Math.min(sourceRect.width, sourceRect.height) / 30));
+  const padding = Math.max(4, radius * 3);
+  const sourceX = Math.max(0, Math.floor(sourceRect.x - padding));
+  const sourceY = Math.max(0, Math.floor(sourceRect.y - padding));
+  const sourceRight = Math.min(canvas.width, Math.ceil(sourceRect.x + sourceRect.width + padding));
+  const sourceBottom = Math.min(canvas.height, Math.ceil(sourceRect.y + sourceRect.height + padding));
+  const sourceWidth = Math.max(1, sourceRight - sourceX);
+  const sourceHeight = Math.max(1, sourceBottom - sourceY);
   const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = Math.max(1, Math.round(rect.width));
-  tempCanvas.height = Math.max(1, Math.round(rect.height));
+  tempCanvas.width = sourceWidth;
+  tempCanvas.height = sourceHeight;
   const tempContext = tempCanvas.getContext('2d');
   if (!tempContext) return;
-  tempContext.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, tempCanvas.width, tempCanvas.height);
+  tempContext.drawImage(canvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, tempCanvas.width, tempCanvas.height);
   context.save();
   context.filter = `blur(${radius}px)`;
-  context.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, rect.x, rect.y, rect.width, rect.height);
+  context.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, sourceX, sourceY, tempCanvas.width, tempCanvas.height);
   context.restore();
 }
 
@@ -807,27 +1357,27 @@ function applyMasksAndWatermark(canvas: HTMLCanvasElement, sourceCrop: Rect): vo
   const context = canvas.getContext('2d');
   const image = currentImage.value;
   if (!context || !image || activeTab.value !== 'privacy') return;
+  const sourceCanvas = document.createElement('canvas');
+  sourceCanvas.width = canvas.width;
+  sourceCanvas.height = canvas.height;
+  const sourceContext = sourceCanvas.getContext('2d');
+  if (!sourceContext) return;
+  sourceContext.drawImage(canvas, 0, 0);
   masks.value.forEach((mask) => {
-    const intersectionLeft = Math.max(mask.rect.x, sourceCrop.x);
-    const intersectionTop = Math.max(mask.rect.y, sourceCrop.y);
-    const intersectionRight = Math.min(mask.rect.x + mask.rect.width, sourceCrop.x + sourceCrop.width);
-    const intersectionBottom = Math.min(mask.rect.y + mask.rect.height, sourceCrop.y + sourceCrop.height);
-    if (intersectionRight <= intersectionLeft || intersectionBottom <= intersectionTop) return;
-    const outputRect: Rect = {
-      x: (intersectionLeft - sourceCrop.x) * canvas.width / sourceCrop.width,
-      y: (intersectionTop - sourceCrop.y) * canvas.height / sourceCrop.height,
-      width: (intersectionRight - intersectionLeft) * canvas.width / sourceCrop.width,
-      height: (intersectionBottom - intersectionTop) * canvas.height / sourceCrop.height,
+    const outputMask: Mask = {
+      rect: {
+        x: (mask.rect.x - sourceCrop.x) * canvas.width / sourceCrop.width,
+        y: (mask.rect.y - sourceCrop.y) * canvas.height / sourceCrop.height,
+        width: mask.rect.width * canvas.width / sourceCrop.width,
+        height: mask.rect.height * canvas.height / sourceCrop.height,
+      },
+      style: mask.style,
+      rotation: mask.rotation,
     };
-    if (mask.style === 'black') {
-      context.fillStyle = '#000';
-      context.fillRect(outputRect.x, outputRect.y, outputRect.width, outputRect.height);
-    } else if (mask.style === 'white') {
-      context.fillStyle = '#fff';
-      context.fillRect(outputRect.x, outputRect.y, outputRect.width, outputRect.height);
-    } else if (mask.style === 'blur') {
-      drawBlur(context, canvas, outputRect);
-    } else drawMosaic(context, canvas, outputRect);
+    const outputRight = outputMask.rect.x + outputMask.rect.width;
+    const outputBottom = outputMask.rect.y + outputMask.rect.height;
+    if (outputRight <= 0 || outputBottom <= 0 || outputMask.rect.x >= canvas.width || outputMask.rect.y >= canvas.height) return;
+    drawMaskEffect(context, sourceCanvas, outputMask);
   });
   drawWatermark(context, canvas.width, canvas.height);
 }
@@ -836,8 +1386,13 @@ function renderCurrentCanvas(): HTMLCanvasElement {
   const image = currentImage.value;
   if (!image) throw new Error('请先导入图片');
   const sourceCrop = activeTab.value === 'resize' && cropRect.value ? normalizeRect(cropRect.value) : fullImageRect();
-  const width = activeTab.value === 'resize' ? Math.max(1, Math.round(outputWidth.value)) : image.naturalWidth;
-  const height = activeTab.value === 'resize' ? Math.max(1, Math.round(outputHeight.value)) : image.naturalHeight;
+  const resizeSize = activeTab.value === 'resize' ? getResizeOutputSize(image, sourceCrop) : null;
+  const width = resizeSize?.width || image.naturalWidth;
+  const height = resizeSize?.height || image.naturalHeight;
+  if (resizeSize) {
+    outputWidth.value = resizeSize.width;
+    outputHeight.value = resizeSize.height;
+  }
   const canvas = renderSourceCanvas(image, sourceCrop, width, height);
   applyMasksAndWatermark(canvas, sourceCrop);
   return canvas;
@@ -885,7 +1440,9 @@ function setProcessed(blob: Blob, width: number, height: number): void {
   processedUrl.value = URL.createObjectURL(blob);
   processedWidth.value = width;
   processedHeight.value = height;
+  processedTab.value = activeTab.value;
   viewMode.value = 'processed';
+  saveImageState(selectedId.value);
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -895,6 +1452,31 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+function toExifDate(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const localDate = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (localDate) {
+    return `${localDate[1]}:${localDate[2]}:${localDate[3]} ${localDate[4]}:${localDate[5]}:${localDate[6] || '00'}`;
+  }
+  const exifDate = trimmed.match(/^(\d{4})[:\-](\d{2})[:\-](\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (exifDate) {
+    return `${exifDate[1]}:${exifDate[2]}:${exifDate[3]} ${exifDate[4]}:${exifDate[5]}:${exifDate[6] || '00'}`;
+  }
+  return '';
+}
+
+function toDateTimeLocalInput(value: string): string {
+  const exifDate = toExifDate(value);
+  if (!exifDate) return '';
+  return exifDate.replace(/^(\d{4}):(\d{2}):(\d{2}) /, '$1-$2-$3T');
+}
+
+function blockDateTimeKeyboardInput(event: KeyboardEvent): void {
+  if (event.key === 'Tab' || event.key === 'Escape') return;
+  event.preventDefault();
 }
 
 async function applyExifPolicy(dataUrl: string, sourceFile: File | null): Promise<string> {
@@ -908,7 +1490,12 @@ async function applyExifPolicy(dataUrl: string, sourceFile: File | null): Promis
       const sourceDataUrl = await fileToDataUrl(sourceFile);
       exifObj = piexif.load(sourceDataUrl);
     } else if (exifPolicy.value === 'edit') {
-      if (exifEditDate.value) exifObj['0th'][piexif.ImageIFD.DateTime] = exifEditDate.value;
+      const formattedDate = toExifDate(exifEditDate.value);
+      if (formattedDate) {
+        exifObj['0th'][piexif.ImageIFD.DateTime] = formattedDate;
+        exifObj.Exif[piexif.ExifIFD.DateTimeOriginal] = formattedDate;
+        exifObj.Exif[piexif.ExifIFD.DateTimeDigitized] = formattedDate;
+      }
       if (exifEditMake.value) exifObj['0th'][piexif.ImageIFD.Make] = exifEditMake.value;
       if (exifEditModel.value) exifObj['0th'][piexif.ImageIFD.Model] = exifEditModel.value;
     }
@@ -926,8 +1513,8 @@ async function processCurrent(): Promise<void> {
   let blob: Blob;
   const mime = activeTab.value === 'convert' ? outputFormat.value : 'image/jpeg';
   if (activeTab.value === 'compress') {
-    blob = await compressToTarget(canvas, Math.max(10, targetKB.value) * 1024);
-  } else if (mime === 'image/jpeg' && exifPolicy.value !== 'strip') {
+    blob = await compressToTarget(canvas, Math.max(10, Number(targetKB.value) || 200) * 1024);
+  } else if (activeTab.value === 'convert' && mime === 'image/jpeg' && exifPolicy.value !== 'strip') {
     const dataUrl = await applyExifPolicy(canvas.toDataURL('image/jpeg', outputQuality.value), image.file);
     blob = dataUrlToBlob(dataUrl);
   } else {
@@ -963,9 +1550,18 @@ async function composeImages(): Promise<void> {
 }
 
 async function createNineGridAndScroll(): Promise<void> {
-  await createNineGrid();
-  await nextTick();
-  if (nineGridSection.value) nineGridSection.value.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (!currentImage.value || isProcessing.value) return;
+  isProcessing.value = true;
+  errorMessage.value = '';
+  try {
+    await createNineGrid();
+    await nextTick();
+    if (nineGridSection.value) nineGridSection.value.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '九宫格生成失败';
+  } finally {
+    isProcessing.value = false;
+  }
 }
 
 async function createNineGrid(): Promise<void> {
@@ -991,6 +1587,7 @@ async function createNineGrid(): Promise<void> {
     }
   }
   gridTiles.value = nextTiles;
+  saveImageState(image.id);
   setStatus('九宫格已生成 9 张等大图片');
 }
 
@@ -1020,12 +1617,15 @@ function downloadBlob(blob: Blob, fileName: string): void {
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
+  link.style.display = 'none';
+  document.body.appendChild(link);
   link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function downloadProcessed(): void {
-  if (!processedBlob.value) return;
+  if (!hasCurrentProcessed.value || !processedBlob.value) return;
   downloadBlob(processedBlob.value, `prohub-image-${Date.now()}.${extensionForMime(processedBlob.value.type)}`);
 }
 
@@ -1042,30 +1642,129 @@ async function downloadGridZip(): Promise<void> {
 }
 
 function cloneMasks(source: Mask[]): Mask[] {
-  return source.map((m) => ({ rect: { ...m.rect }, style: m.style }));
+  return source.map((mask) => cloneMask(mask));
 }
-function undoMask(): void {
-  const prev = undoStack.value.pop();
-  if (prev) { redoStack.value.push(cloneMasks(masks.value)); masks.value = prev; nextTick(drawPreview); }
+function cloneMaskHistory(source: Mask[][]): Mask[][] {
+  return source.map((history) => cloneMasks(history));
 }
-function redoMask(): void {
-  const next = redoStack.value.pop();
-  if (next) { undoStack.value.push(cloneMasks(masks.value)); masks.value = next; nextTick(drawPreview); }
-}
-function clearMasks(): void {
+
+function updateSelectedMask(nextMask: Mask): void {
+  if (selectedMaskIndex.value === null || !masks.value[selectedMaskIndex.value]) return;
+  if (masksAreEqual([masks.value[selectedMaskIndex.value]], [nextMask])) return;
   undoStack.value.push(cloneMasks(masks.value));
-  masks.value = [];
+  masks.value[selectedMaskIndex.value] = cloneMask(nextMask);
   redoStack.value = [];
   nextTick(drawPreview);
 }
 
-watch(() => currentImage.value?.id, initializeImageState);
-watch([activeTab, masks, watermarkEnabled, watermarkText, maskStyle, viewMode], () => nextTick(drawPreview), { deep: true });
+function normalizeSelectedMaskIndex(): void {
+  if (selectedMaskIndex.value === null || masks.value.length === 0) {
+    selectedMaskIndex.value = masks.value.length === 0 ? null : selectedMaskIndex.value;
+    return;
+  }
+  selectedMaskIndex.value = Math.max(0, Math.min(selectedMaskIndex.value, masks.value.length - 1));
+}
+
+function onMaskRotationInput(event: Event): void {
+  const value = Number((event.target as HTMLInputElement).value);
+  if (!selectedMask.value || !Number.isFinite(value)) return;
+  updateSelectedMask({ ...cloneMask(selectedMask.value), rotation: normalizeRotation(value) });
+}
+
+function rotateSelectedMask(delta: number): void {
+  if (!selectedMask.value) return;
+  updateSelectedMask({ ...cloneMask(selectedMask.value), rotation: normalizeRotation(selectedMask.value.rotation + delta) });
+}
+
+function undoMask(): void {
+  const prev = undoStack.value.pop();
+  if (prev) {
+    redoStack.value.push(cloneMasks(masks.value));
+    masks.value = cloneMasks(prev);
+    normalizeSelectedMaskIndex();
+    nextTick(drawPreview);
+  }
+}
+function redoMask(): void {
+  const next = redoStack.value.pop();
+  if (next) {
+    undoStack.value.push(cloneMasks(masks.value));
+    masks.value = cloneMasks(next);
+    normalizeSelectedMaskIndex();
+    nextTick(drawPreview);
+  }
+}
+function clearMasks(): void {
+  if (!masks.value.length) return;
+  undoStack.value.push(cloneMasks(masks.value));
+  masks.value = [];
+  redoStack.value = [];
+  selectedMaskIndex.value = null;
+  nextTick(drawPreview);
+}
+
+watch(() => currentImage.value?.id, (newId, oldId) => {
+  if (oldId && oldId !== newId) saveImageState(oldId);
+  initializeImageState();
+});
+watch(viewMode, () => nextTick(drawPreview));
+watch([activeTab, masks, watermarkEnabled, watermarkText, maskStyle, cropRect], () => {
+  if (!restoringState && viewMode.value === 'original') viewMode.value = 'editing';
+  nextTick(drawPreview);
+}, { deep: true });
 
 onMounted(() => nextTick(drawPreview));
 onUnmounted(() => {
-  files.value.forEach((image) => URL.revokeObjectURL(image.sourceUrl));
-  if (processedUrl.value) URL.revokeObjectURL(processedUrl.value);
-  clearGridTiles();
+  saveImageState(selectedId.value);
+  files.value.forEach((image) => {
+    URL.revokeObjectURL(image.sourceUrl);
+    disposeImageState(image);
+  });
 });
 </script>
+
+<style scoped>
+.liquid-glass-select {
+  appearance: none;
+  color-scheme: dark;
+  background-color: rgba(24, 24, 27, 0.72);
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.72) 50%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 50%,
+    calc(100% - 11px) 50%;
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 30px rgba(0, 0, 0, 0.12);
+  padding-right: 2.5rem;
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.liquid-glass-select:hover {
+  background-color: rgba(39, 39, 42, 0.78);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.liquid-glass-select:focus {
+  border-color: rgba(0, 122, 255, 0.8);
+  box-shadow:
+    0 0 0 3px rgba(0, 122, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.liquid-glass-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.liquid-glass-select option {
+  background: #18181b;
+  color: #fff;
+}
+</style>

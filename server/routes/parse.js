@@ -275,7 +275,16 @@ async function fetchWeiboItemInfo(mid) {
 function parseWeiboItemInfo(data) {
   // m.weibo.cn API 返回 data.data
   const status = data?.data || data;
-  if (!status || (!status.text && !status.text_raw)) return null;
+  const hasMediaPayload = status && (
+    status.pics
+    || status.pic_ids
+    || status.pic_infos
+    || status.picInfo
+    || status.original_pic
+    || status.page_info
+    || status.retweeted_status
+  );
+  if (!status || (!status.text && !status.text_raw && !hasMediaPayload)) return null;
 
   // 纯文本：去除 HTML 标签
   const rawText = status.text_raw || status.text || '';
@@ -285,30 +294,20 @@ function parseWeiboItemInfo(data) {
   const media = [];
   let cover = '';
   let videoUrl = '';
-  const images = [];
-
-  // --- 图文 ---
-  const pics = status.pics || [];
-  for (const pic of pics) {
-    // 取高清原图：large.url → 替换为 mw2000
-    let imgUrl = pic.large?.url || pic.url || pic.pid || '';
-    if (imgUrl) {
-      // 将 /large/ 替换为 /mw2000/ 获取最高清无水印版本
-      imgUrl = imgUrl.replace(/\/large\//, '/mw2000/');
-      images.push(imgUrl);
-      media.push({ type: 'image', url: imgUrl, thumb: imgUrl });
-    }
+  const pageInfo = status.page_info || status.pageInfo || {};
+  const images = collectWeiboImageUrls(status, pageInfo.type !== 'video');
+  for (const imageUrl of images) {
+    media.push({ type: 'image', url: imageUrl, thumb: imageUrl });
   }
 
   // --- 视频 ---
-  const pageInfo = status.page_info || status.pageInfo || {};
   if (pageInfo && pageInfo.type === 'video') {
     const mediaInfo = pageInfo.media_info || pageInfo.mediaInfo || {};
     // 优先无水印码流：swift_mp4_url / video_sources 中无 wm 标记的地址 / mp4_720p_mp4
-    const videoSources = Array.isArray(mediaInfo.video_sources) ? mediaInfo.video_sources : [];
+    const videoSources = collectWeiboVideoUrls(mediaInfo.video_sources);
     const sourceCandidates = [
       mediaInfo.swift_mp4_url,
-      ...videoSources.map((s) => s.url || s.url_720p || s.quality_url || '').filter(Boolean),
+      ...videoSources,
       mediaInfo.mp4_720p_mp4,
       mediaInfo.mp4_hd_url,
       mediaInfo.stream_url_hd,
@@ -324,27 +323,17 @@ function parseWeiboItemInfo(data) {
       media.push({ type: 'video', url: videoUrl, thumb: cover });
     }
   }
-  // --- 原始图片（无pics但有original_pic） ---
-  if (images.length === 0 && status.original_pic) {
-    cover = status.original_pic;
-    images.push(status.original_pic);
-    media.push({ type: 'image', url: status.original_pic, thumb: status.original_pic });
-  }
-
   // --- 转发的微博 ---
   let retweetedTitle = '';
   const retweeted = status.retweeted_status;
   if (retweeted) {
     retweetedTitle = (retweeted.text_raw || retweeted.text || '')
       .replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
-    // 转发微博的图片
-    const rPics = retweeted.pics || [];
-    for (const pic of rPics) {
-      let imgUrl = pic.large?.url || pic.url || pic.pid || '';
-      if (imgUrl) {
-        imgUrl = imgUrl.replace(/\/large\//, '/mw2000/');
-        images.push(imgUrl);
-        media.push({ type: 'image', url: imgUrl, thumb: imgUrl });
+    const retweetedImages = collectWeiboImageUrls(retweeted, true);
+    for (const imageUrl of retweetedImages) {
+      if (!images.includes(imageUrl)) {
+        images.push(imageUrl);
+        media.push({ type: 'image', url: imageUrl, thumb: imageUrl });
       }
     }
   }
@@ -365,9 +354,133 @@ function parseWeiboItemInfo(data) {
   };
 }
 
+function collectWeiboImageUrls(status, includeOriginalPic) {
+  const imageUrls = [];
+  const seen = new Set();
+  const sources = [status, status?.mblog, status?.status].filter((value) => value && typeof value === 'object');
+
+  for (const source of sources) {
+    const infoMap = {};
+    for (const key of ['pic_infos', 'picInfos', 'pic_info', 'picInfo']) {
+      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+        Object.assign(infoMap, source[key]);
+      }
+    }
+
+    const entries = [];
+    for (const key of ['pics', 'pic_ids', 'picIds']) {
+      const value = source[key];
+      if (Array.isArray(value)) {
+        value.forEach((pic, index) => entries.push({ key: String(index), pic }));
+      } else if (value && typeof value === 'object') {
+        Object.entries(value).forEach(([entryKey, pic]) => entries.push({ key: entryKey, pic }));
+      }
+    }
+    Object.entries(infoMap).forEach(([key, pic]) => entries.push({ key, pic }));
+
+    const handled = new Set();
+    for (const entry of entries) {
+      const pid = getWeiboPicId(entry.pic, entry.key);
+      const info = (pid && infoMap[pid]) || {};
+      const candidates = [
+        getWeiboMediaUrl(info.original),
+        getWeiboMediaUrl(info.largest),
+        getWeiboMediaUrl(info.large),
+        getWeiboMediaUrl(info.mw2000),
+        getWeiboMediaUrl(entry.pic?.original),
+        getWeiboMediaUrl(entry.pic?.largest),
+        getWeiboMediaUrl(entry.pic?.large),
+        getWeiboMediaUrl(entry.pic?.mw2000),
+        getWeiboMediaUrl(entry.pic),
+        getWeiboMediaUrl(entry.pic?.thumbnail_pic),
+        getWeiboMediaUrl(entry.pic?.bmiddle),
+        getWeiboMediaUrl(entry.pic?.thumbnail),
+        typeof entry.pic === 'string' ? entry.pic : '',
+      ];
+      const referenceUrl = candidates.find((candidate) => /^https?:\/\//i.test(String(candidate || '')));
+      if (pid && !referenceUrl && /^[\w-]+(?:\.[a-z0-9]+)?$/i.test(pid)) {
+        candidates.push(`https://wx1.sinaimg.cn/large/${pid}${/\.[a-z0-9]+$/i.test(pid) ? '' : '.jpg'}`);
+      }
+
+      const normalizedCandidates = candidates.map(normalizeWeiboImageUrl).filter(Boolean);
+      const imageUrl = normalizedCandidates.find((candidate) => !isWatermarkedWeiboUrl(candidate))
+        || normalizedCandidates[0]
+        || '';
+      if (imageUrl && !handled.has(pid || imageUrl)) {
+        handled.add(pid || imageUrl);
+        if (!seen.has(imageUrl)) {
+          seen.add(imageUrl);
+          imageUrls.push(imageUrl);
+        }
+      }
+    }
+
+    if (includeOriginalPic) {
+      const originalPic = normalizeWeiboImageUrl(source.original_pic || source.originalPic || '');
+      if (originalPic && !seen.has(originalPic)) {
+        seen.add(originalPic);
+        imageUrls.push(originalPic);
+      }
+    }
+  }
+
+  return imageUrls;
+}
+
+function getWeiboPicId(pic, fallback) {
+  if (typeof pic === 'string') return pic;
+  return String(pic?.pid || pic?.pic_id || pic?.picId || pic?.id || fallback || '');
+}
+
+function getWeiboMediaUrl(value) {
+  if (typeof value === 'string') return value;
+  if (!value || typeof value !== 'object') return '';
+  return value.url || value.src || value.uri || value.contentUrl || '';
+}
+
+function normalizeWeiboImageUrl(value) {
+  let imageUrl = String(value || '').trim();
+  if (!imageUrl) return '';
+  if (imageUrl.startsWith('//')) imageUrl = `https:${imageUrl}`;
+  if (!/^https?:\/\//i.test(imageUrl)) return '';
+  try {
+    const parsed = new URL(imageUrl);
+    parsed.hash = '';
+    if (/sinaimg\.cn$/i.test(parsed.hostname)) parsed.search = '';
+    return parsed.toString();
+  } catch {
+    return imageUrl;
+  }
+}
+
 /**
  * 微博主解析入口
  */
+function collectWeiboVideoUrls(value) {
+  if (!value) return [];
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap((item) => collectWeiboVideoUrls(item));
+  if (typeof value !== 'object') return [];
+
+  const urls = [
+    value.url,
+    value.url_1080p,
+    value.url_720p,
+    value.quality_url,
+    value.mp4_url,
+    value.mp4_hd_url,
+    value.mp4_720p_mp4,
+    value.swift_mp4_url,
+  ].filter(Boolean);
+
+  for (const [key, nested] of Object.entries(value)) {
+    if (!urls.includes(nested) && (Array.isArray(nested) || (nested && typeof nested === 'object'))) {
+      urls.push(...collectWeiboVideoUrls(nested));
+    }
+  }
+  return urls;
+}
+
 /**
  * 微博视频 URL 归一化：确保 https、补齐域名、清理空白与非法字符
  */
@@ -728,6 +841,7 @@ router.get('/proxy-video', async (req, res) => {
       'Referer': 'https://weibo.com/',
       'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Accept-Encoding': 'identity',
     };
     if (range) upstreamHeaders['Range'] = range;
 
@@ -766,7 +880,7 @@ router.get('/proxy-video', async (req, res) => {
       else res.end();
     });
     res.on('close', () => {
-      if (typeof upstream.destroy === 'function') upstream.destroy();
+      if (!res.writableEnded && typeof upstream.destroy === 'function') upstream.destroy();
     });
     upstream.pipe(res);
   } catch (e) {

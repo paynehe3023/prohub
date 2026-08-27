@@ -49,7 +49,7 @@
           <img v-else-if="result.cover" :src="proxyImage(result.cover)" referrerpolicy="no-referrer"
             class="w-full max-h-72 object-contain mx-auto" @error="onImgError($event)" />
           <div v-else class="flex items-center justify-center h-40 text-zinc-500 text-sm">封面加载中...</div>
-          <button v-if="result.video" @click="downloadSingle(result.video)"
+          <button v-if="result.video" @click="downloadSingle(result.video, 'video')"
             class="absolute bottom-3 right-3 px-4 py-2.5 rounded-[16px] bg-ios-blue text-white text-[0.875rem] font-semibold hover:bg-ios-blue/90 shadow-lg shadow-ios-blue/25 transition-all active:scale-[0.97] flex items-center gap-1.5 text-glass-sm">
             <IconDownload class="w-4 h-4" /> 下载无水印视频
           </button>
@@ -66,7 +66,7 @@
           <div v-for="(imgUrl, idx) in result.images" :key="idx" class="relative bg-black/20">
             <img :src="proxyImage(imgUrl)" referrerpolicy="no-referrer"
               class="w-full max-h-56 object-contain mx-auto" loading="lazy" @error="onImgError($event)" />
-            <button @click="downloadSingle(imgUrl)"
+            <button @click="downloadSingle(imgUrl, 'image')"
               class="absolute top-2 right-2 px-2.5 py-1 rounded-[12px] bg-black/50 text-white text-[0.6875rem] font-medium hover:bg-black/70 backdrop-blur-md transition active:scale-[0.96] flex items-center gap-1 text-glass-sm">
               <IconDownload class="w-3 h-3" /> 原图
             </button>
@@ -91,7 +91,7 @@
           </button>
         </div>
         <div v-if="allDownloads.length > 1" class="mt-4 flex flex-wrap gap-2">
-          <button v-for="(d, idx) in allDownloads" :key="idx" @click="downloadSingle(d.url)"
+          <button v-for="(d, idx) in allDownloads" :key="idx" @click="downloadSingle(d.url, d.type)"
             class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full liquid-glass-inset text-[0.75rem] text-zinc-300 hover:text-white hover:border-white/30 transition-all active:scale-[0.97] text-glass-sm">
             <IconPhoto v-if="d.type === 'image'" class="w-3 h-3" />
             <IconVideo v-else class="w-3 h-3" /> {{ d.label }}
@@ -131,30 +131,62 @@ const allDownloads = computed(() => {
   (r.media||[]).forEach((m,i) => { if(!l.find(x=>x.url===m.url)) l.push({ type:m.type, url:m.url, label:`${m.type==='image'?'图片':'视频'}${i+1}` }); });
   return l;
 });
-const PROXY_DOMAINS = ['sinaimg.cn','weibocdn.com','xhscdn.com','pstatp.com','douyinpic.com','douyincdn.com','douyinvod.com','ixigua.com','bytedance.com','zjcdn.com','bytecdn.com','douyinstatic.com'];
+const PROXY_DOMAINS = ['sinaimg.cn','weibocdn.com','weibo.com','xhscdn.com','pstatp.com','douyinpic.com','douyincdn.com','douyinvod.com','ixigua.com','bytedance.com','zjcdn.com','bytecdn.com','douyinstatic.com'];
 function proxyImage(url) { if(!url) return ''; if(PROXY_DOMAINS.some(d=>url.includes(d))) return `${apiConfig.baseURL}/proxy-image?url=${encodeURIComponent(url)}`; return url; }
-function proxyVideo(url) { if(!url) return ''; if(PROXY_DOMAINS.some(d=>url.includes(d))) return `${apiConfig.baseURL}/proxy-video?url=${encodeURIComponent(url)}`; return url; }
+function proxyVideo(url) {
+  if (!url) return '';
+  if (url.startsWith(`${apiConfig.baseURL}/proxy-video`)) return url;
+  if (/^https?:\/\//i.test(url)) return `${apiConfig.baseURL}/proxy-video?url=${encodeURIComponent(url)}`;
+  return url;
+}
 function buildCopyText() { if(!result.value) return ''; const p=[]; if(result.value.title) p.push(result.value.title); if(result.value.description&&result.value.description!==result.value.title) p.push(result.value.description); return p.join('\n\n'); }
 async function copyText(t) { try { await navigator.clipboard.writeText(t); } catch { const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); } copied.value=true; setTimeout(()=>{copied.value=false;},2000); }
 function onImgError(e) { e.target.style.display='none'; }
 function onVideoError(e) { e.target.style.display='none'; }
 
-// 统一下载逻辑：走代理（防盗链域名）→ fetch blob → 触发浏览器下载
-async function downloadSingle(rawUrl) {
-  const url = proxyImage(rawUrl); // 对微博/小红书图片走代理
+function inferMediaType(rawUrl) {
+  return /\.(mp4|m4v|mov|webm|m3u8)(?:$|[?#])/i.test(rawUrl || '') ? 'video' : 'image';
+}
+
+function extensionFromResponse(response, blob, rawUrl, type) {
+  const contentType = (response.headers.get('content-type') || blob.type || '').toLowerCase();
+  if (contentType.includes('webm')) return '.webm';
+  if (contentType.includes('quicktime') || contentType.includes('x-m4v')) return '.mov';
+  if (contentType.includes('video') || contentType.includes('mp4')) return '.mp4';
+  if (contentType.includes('png')) return '.png';
+  if (contentType.includes('webp')) return '.webp';
+  if (contentType.includes('gif')) return '.gif';
+  if (contentType.includes('avif')) return '.avif';
+  if (type === 'video') return '.mp4';
+  const urlExtension = (rawUrl || '').match(/\.(png|jpe?g|webp|gif|avif)(?:$|[?#])/i);
+  return urlExtension ? `.${urlExtension[1].toLowerCase().replace('jpeg', 'jpg')}` : '.jpg';
+}
+
+function triggerBlobDownload(blob, filename) {
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Keep the object URL alive long enough for mobile browsers to start the download.
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+}
+
+// 统一下载逻辑：按媒体类型选择代理 → fetch blob → 触发浏览器下载
+async function downloadSingle(rawUrl, type = inferMediaType(rawUrl)) {
+  const url = type === 'video' ? proxyVideo(rawUrl) : proxyImage(rawUrl);
   try {
     const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`下载失败（HTTP ${resp.status}）`);
     const blob = await resp.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const ext = blob.type.includes('png') ? '.png' : blob.type.includes('webp') ? '.webp' : blob.type.includes('video') || blob.type.includes('mp4') ? '.mp4' : (rawUrl.includes('.mp4') ? '.mp4' : '.jpg');
-    a.href = blobUrl;
-    a.download = 'prohub_download_' + Date.now() + ext;
-    a.click();
-    URL.revokeObjectURL(blobUrl);
-  } catch {
-    // 降级：直接跳转原图
-    window.open(rawUrl, '_blank');
+    const ext = extensionFromResponse(resp, blob, rawUrl, type);
+    triggerBlobDownload(blob, `prohub_download_${Date.now()}${ext}`);
+  } catch (e) {
+    error.value = e.message || '下载失败';
+    window.open(rawUrl, '_blank', 'noopener,noreferrer');
   }
 }
 async function handleParse() {
@@ -177,17 +209,13 @@ async function downloadAll() {
   let done = 0;
   try {
     for (const item of items) {
-      const url = proxyImage(item.url); // 走代理
+      const url = item.type === 'video' ? proxyVideo(item.url) : proxyImage(item.url);
       try {
         const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const blob = await resp.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        const dlExt = item.type === 'video' ? '.mp4' : (item.url.includes('.webp') ? '.webp' : '.jpg');
-        a.download = (item.label || 'download') + dlExt;
-        a.click();
-        URL.revokeObjectURL(blobUrl);
+        const dlExt = extensionFromResponse(resp, blob, item.url, item.type);
+        triggerBlobDownload(blob, `${item.label || 'download'}${dlExt}`);
         done++;
       } catch {
         window.open(item.url, '_blank');
