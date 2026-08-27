@@ -304,17 +304,26 @@ function parseWeiboItemInfo(data) {
   const pageInfo = status.page_info || status.pageInfo || {};
   if (pageInfo && pageInfo.type === 'video') {
     const mediaInfo = pageInfo.media_info || pageInfo.mediaInfo || {};
-    videoUrl = mediaInfo.mp4_hd_url
-      || mediaInfo.mp4_720p_mp4
-      || mediaInfo.stream_url_hd
-      || mediaInfo.stream_url
-      || '';
+    // 优先无水印码流：swift_mp4_url / video_sources 中无 wm 标记的地址 / mp4_720p_mp4
+    const videoSources = Array.isArray(mediaInfo.video_sources) ? mediaInfo.video_sources : [];
+    const sourceCandidates = [
+      mediaInfo.swift_mp4_url,
+      ...videoSources.map((s) => s.url || s.url_720p || s.quality_url || '').filter(Boolean),
+      mediaInfo.mp4_720p_mp4,
+      mediaInfo.mp4_hd_url,
+      mediaInfo.stream_url_hd,
+      mediaInfo.stream_url,
+      mediaInfo.mp4_sd_url,
+      mediaInfo.url,
+    ].filter(Boolean).map((u) => normalizeWeiboVideoUrl(u));
+    const uniqueUrls = Array.from(new Set(sourceCandidates));
+    // 无水印优先：URL 含 /wm/ 或 watermark 的排后
+    videoUrl = uniqueUrls.find((u) => !isWatermarkedWeiboUrl(u)) || uniqueUrls[0] || '';
     cover = pageInfo.page_pic?.url || pageInfo.page_pic || status.original_pic || '';
     if (videoUrl) {
       media.push({ type: 'video', url: videoUrl, thumb: cover });
     }
   }
-
   // --- 原始图片（无pics但有original_pic） ---
   if (images.length === 0 && status.original_pic) {
     cover = status.original_pic;
@@ -359,6 +368,30 @@ function parseWeiboItemInfo(data) {
 /**
  * 微博主解析入口
  */
+/**
+ * 微博视频 URL 归一化：确保 https、补齐域名、清理空白与非法字符
+ */
+function normalizeWeiboVideoUrl(value) {
+  let url = String(value || '').trim();
+  if (!url) return '';
+  if (url.startsWith('//')) url = 'https:' + url;
+  if (!/^https?:\/\//i.test(url)) return '';
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * 判断是否是水印版本微博视频 URL
+ */
+function isWatermarkedWeiboUrl(url) {
+  return /\/wm\/|\bwm\b|watermark|mark_|_wm\.mp4|watermarked/i.test(url);
+}
+
 async function parseWeibo(url) {
   console.log(`[WB] Parsing: ${url.slice(0, 80)}`);
 
@@ -676,6 +709,10 @@ router.get('/proxy-image', async (req, res) => {
 });
 
 // ==================== 视频代理（解决微博视频防盗链 403） ====================
+// 关键技术点：
+// 1. 转发客户端 Range 头并透传 206/Content-Range/Accept-Ranges，否则 <video> 无法 seek/播放
+// 2. 关闭 axios 自动解压（视频流不应被 gzip 二次包装，否则播放器解码失败）
+// 3. 透传 Content-Type / Content-Length 等关键响应头
 router.get('/proxy-video', async (req, res) => {
   try {
     const videoUrl = req.query.url;
@@ -683,29 +720,61 @@ router.get('/proxy-video', async (req, res) => {
       return res.status(400).json({ error: '缺少 url 参数' });
     }
 
-    console.log(`[ProxyVideo] ${videoUrl.slice(0, 80)}`);
+    const range = req.headers.range;
+    console.log(`[ProxyVideo] ${videoUrl.slice(0, 80)} | Range: ${range || 'none'}`);
 
-    const imgRes = await axios.get(videoUrl, {
-      headers: {
-        'User-Agent': MOBILE_UA,
-        'Referer': 'https://weibo.com/',
-      },
+    const upstreamHeaders = {
+      'User-Agent': MOBILE_UA,
+      'Referer': 'https://weibo.com/',
+      'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    };
+    if (range) upstreamHeaders['Range'] = range;
+
+    const upRes = await axios.get(videoUrl, {
+      headers: upstreamHeaders,
       responseType: 'stream',
-      timeout: 60000,
-      validateStatus: s => s < 500,
+      timeout: 120000,
+      maxRedirects: 6,
+      validateStatus: s => s < 400,
+      decompress: false,
     });
 
-    const ct = imgRes.headers['content-type'] || 'video/mp4';
+    const upstream = upRes.data;
+    if (!upstream) {
+      return res.status(502).json({ error: '上游无数据' });
+    }
+
+    const ct = upRes.headers['content-type'] || 'video/mp4';
+    const cl = upRes.headers['content-length'];
+    const cr = upRes.headers['content-range'];
+    const ar = upRes.headers['accept-ranges'];
+    const status = upRes.status || 200;
+
+    res.status(status);
     res.setHeader('Content-Type', ct);
-    res.setHeader('Content-Disposition', 'attachment; filename="video.mp4"');
+    res.setHeader('Accept-Ranges', ar || 'bytes');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    imgRes.data.pipe(res);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+    if (cl) res.setHeader('Content-Length', cl);
+    if (cr) res.setHeader('Content-Range', cr);
+    if (status === 200) res.setHeader('Content-Disposition', 'inline; filename="video.mp4"');
+
+    upstream.on('error', (err) => {
+      console.error('[ProxyVideo Stream Error]', err.message);
+      if (!res.headersSent) res.status(502).json({ error: '视频流传输中断' });
+      else res.end();
+    });
+    res.on('close', () => {
+      if (typeof upstream.destroy === 'function') upstream.destroy();
+    });
+    upstream.pipe(res);
   } catch (e) {
     console.error('[ProxyVideo Error]', e.message);
-    res.status(502).json({ error: '视频代理失败' });
+    if (!res.headersSent) res.status(502).json({ error: '视频代理失败' });
+    else res.end();
   }
 });
-
 // ==================== AI 抠图（已迁移至 remove-bg.js 独立模块） ====================
 
 module.exports = router;

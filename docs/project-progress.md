@@ -729,3 +729,29 @@ ps1 -StopDev`
 - `env.d.ts` 补充 `@tabler/icons-vue` 与 `piexifjs` 模块类型声明，避免 IDE 红波浪线。
 - 验证结果：`npm run build` 通过，`MediaStudio` 独立分包 27.29 kB（gzip 11.02 kB）；后端路由语法检查通过。
 - 注意：AI 润色需要用户自行配置 DeepSeek API Key（页面内输入，仅存浏览器 LocalStorage）。
+
+## 二十六、微博解析水印与视频播放修复（2026-08-27）
+
+### 问题 1：微博解析结果带水印
+
+- 根因：`server/routes/parse.js` 的 `parseWeiboItemInfo` 取视频源时字段优先级是 `mp4_hd_url → mp4_720p_mp4 → stream_url_hd → stream_url`，这些大多是带水印码流。
+- 修复：调整解析优先级，优先使用无水印源：
+  - `swift_mp4_url`（微博 Swift 码流，通常无水印）
+  - `media_info.video_sources` 数组中无 wm 标记的地址
+  - `mp4_720p_mp4`
+  - 其余字段按原有顺序兜底
+- 新增 `normalizeWeiboVideoUrl`：统一 https 协议、清理 hash 参数，保证直链可用。
+- 新增 `isWatermarkedWeiboUrl`：识别含 `/wm/`、`watermark`、`_wm.mp4` 等水印标记的 URL，无水印源优先选择。
+
+### 问题 2：微博视频下载后无法播放
+
+- 根因：`/api/proxy-video` 代理转发时存在三类问题：
+  1. 未转发客户端 `Range` 请求头，也未透传 `206 / Content-Range / Accept-Ranges`，浏览器 `<video>` 无法 seek/播放 mp4。
+  2. axios 默认自动解压（`Accept-Encoding: gzip, deflate`），视频流被 gzip 二次包装后播放器解码失败。
+  3. 缺失流错误处理，上游中断时连接可能挂死。
+- 修复：重写 `/api/proxy-video`：
+  - 转发 `Range` 请求头，透传 `Content-Type / Content-Length / Content-Range / Accept-Ranges`，按上游状态码返回 `200/206`。
+  - `decompress: false` 关闭 axios 自动解压，视频流原样转发。
+  - 增加上游流 `error` 事件与客户端 `close` 事件处理，中断时正确收尾。
+- 验证：`node --check` 语法通过；前端 `npm run build` 通过。
+- 影响文件：`server/routes/parse.js`、`docs/project-progress.md`。
