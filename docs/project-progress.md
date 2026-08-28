@@ -905,3 +905,13 @@ ps1 -StopDev`
 - 补齐后端 Socket.IO 房间事件注册，连接、加入、同步、删除、设置、清空和断开事件与现有内存房间统一；同步 `server/package-lock.json` 中的 `socket.io` 依赖记录。
 - 验证：前端 `npm run build`、后端语法检查、`git diff --check` 通过；房间会话实测返回 `host → guest → host`，永久房间 TTL 返回 `0` 且 `expiresAt` 为空。
 - Windows 本机 `npm ci` 仍受到正在占用的 `sharp` DLL 阻止；依赖锁文件已更新，Docker 重建时可按锁文件重新安装，若本机安装需先停止占用 `server/node_modules` 的进程。
+
+### 二十九.3 剪贴板清空逻辑与渲染性能重构（2026-08-28）
+
+- 修复手动清空后 Host/Guest 状态异常：手动清空现在只删除房间内的文本、图片和文件，保留房间、Host Token、Socket.IO 连接和用户角色；自动过期仍按原逻辑销毁临时房间。
+- 房间卡片的房间号改为 `text-sm font-mono`，顶部布局统一使用 `flex items-center justify-between gap-2`，避免房间号与控制按钮互相挤压。
+- 文本同步建立非响应式 `seenMsgIds Set`，发送端携带 `clientId + msgId`，接收端优先拦截自身消息和重复消息；多条同步消息通过 `requestAnimationFrame` 微批合并，避免连续触发 DOM 更新。
+- 消息列表改用 `shallowRef`，所有数组更新改为不可变替换，避免长文本、Base64 和 Blob 数据被 Vue 深度代理；卸载时清理 rAF、待处理消息队列和去重 Set。
+- 消息列表增加 `content-visibility: auto`、`contain-intrinsic-size`、`overscroll-behavior: contain` 和合成层提示，降低长列表滚动时的渲染开销。
+- Host 修改 TTL 时广播房间 `mode`、`ttlMinutes` 和 `expiresAt`，Guest 实时同步临时/永久模式和倒计时，不再被访客默认 TTL 覆盖。
+- 验证：前端 `npm run build`、后端 `node --check server/index.js`、`node --check server/realtime/clipboard.js`、`git diff --check` 通过；本机 `npm ci` 仍因被占用的 `sharp` DLL 无法完成运行依赖安装。

@@ -10,7 +10,7 @@
                   <component :is="statusIcon" size="14" />
                   {{ connectionLabel }}
                 </span>
-                <span v-if="roomTtlMinutes > 0" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-sky-200 text-sky-700 bg-sky-50 dark:border-sky-900/50 dark:text-sky-300 dark:bg-sky-900/20">
+                <span v-if="roomMode === 'temporary'" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-sky-200 text-sky-700 bg-sky-50 dark:border-sky-900/50 dark:text-sky-300 dark:bg-sky-900/20">
                   <IconClockHour4 size="14" />
                   {{ ttlLabel }} 自动清空
                 </span>
@@ -39,7 +39,7 @@
                   <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0">
                       <p class="text-xs uppercase tracking-[0.24em] text-slate-400">当前房间</p>
-                      <p class="mt-1 text-2xl font-black tracking-[0.35em] text-slate-900 dark:text-white">{{ displayRoomId }}</p>
+                      <p class="mt-1 text-sm font-mono font-semibold tracking-[0.2em] text-slate-900 dark:text-white">{{ displayRoomId }}</p>
                     </div>
                     <div class="flex shrink-0 items-center gap-2">
                       <button type="button" @click="toggleRoomCodeVisibility" :aria-label="roomCodeVisible ? '隐藏完整房间号' : '显示完整房间号'" :title="roomCodeVisible ? '隐藏完整房间号' : '显示完整房间号'" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
@@ -195,7 +195,7 @@
             还没有任何内容。先在左侧输入文本，或者直接粘贴截图/拖拽文件试试。
           </div>
 
-          <div class="space-y-4">
+          <div class="space-y-4 clipboard-scroll-list">
             <article v-for="clip in sortedClips" :key="clip.id" class="relative overflow-hidden rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
               <div v-if="clip.transferStatus === 'uploading' || clip.transferStatus === 'failed'" class="absolute inset-x-0 bottom-0 z-10 bg-slate-950/95 px-3 py-2.5 text-white md:inset-0 md:flex md:items-center md:justify-center md:bg-slate-950/55 md:px-6 md:backdrop-blur-sm">
                 <div class="w-full max-w-sm rounded-xl border border-white/15 bg-slate-950/90 p-3 shadow-xl md:rounded-2xl md:p-4">
@@ -322,7 +322,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { useHead } from '@vueuse/head';
 import { useRoute, useRouter } from 'vue-router';
 import QRCode from 'qrcode';
@@ -376,8 +376,9 @@ const isHost = ref(false);
 const hostToken = ref('');
 const roomCodeVisible = ref(false);
 const roomTtlMinutes = ref(15);
+const roomMode = ref('temporary');
 const roomExpiresAt = ref(Date.now() + 15 * 60 * 1000);
-const clips = ref([]);
+const clips = shallowRef([]);
 const textDraft = ref('');
 const qrCodeDataUrl = ref('');
 const dragging = ref(false);
@@ -404,7 +405,9 @@ let visibilityHandler = null;
 const uploadRequests = new Map();
 const uploadReaders = new Map();
 const cancelledUploads = new Set();
-const seenMessageIds = new Set();
+const seenMsgIds = new Set();
+const pendingIncomingClips = new Map();
+let incomingFrameId = 0;
 
 function getClientId() {
   try {
@@ -650,17 +653,17 @@ function upsertClip(clip, { allowSelf = false } = {}) {
   if (!key) return false;
   const index = clips.value.findIndex((item) => clipMessageKey(item) === key || item.id === clip.id);
   if (index < 0 && !allowSelf && clip.clientId && clip.clientId === selfClientId) return false;
-  if (index < 0 && seenMessageIds.has(key)) return false;
+  if (index < 0 && seenMsgIds.has(key)) return false;
   const previous = index >= 0 ? clips.value[index] : null;
   if (previous?.localPreviewUrl && previous.localPreviewUrl !== clip.localPreviewUrl) {
     URL.revokeObjectURL(previous.localPreviewUrl);
   }
-  seenMessageIds.add(key);
+  seenMsgIds.add(key);
   if (index >= 0) {
-    clips.value.splice(index, 1, clip);
+    clips.value = clips.value.map((item, itemIndex) => (itemIndex === index ? clip : item));
     return false;
   }
-  clips.value.unshift(clip);
+  clips.value = [clip, ...clips.value];
   return true;
 }
 
@@ -671,13 +674,35 @@ function replaceInitialClips(incomingClips) {
     (item.transferStatus === 'uploading' || item.transferStatus === 'failed')
     && !incomingKeys.has(clipMessageKey(item))
   ));
-  nextClips.forEach((clip) => seenMessageIds.add(clipMessageKey(clip)));
+  nextClips.forEach((clip) => seenMsgIds.add(clipMessageKey(clip)));
   clips.value = [...nextClips, ...pendingUploads];
 }
 
 function updateUploadCard(msgId, patch) {
   const index = clips.value.findIndex((clip) => clip.msgId === msgId);
-  if (index >= 0) clips.value.splice(index, 1, { ...clips.value[index], ...patch });
+  if (index >= 0) {
+    clips.value = clips.value.map((clip, clipIndex) => (
+      clipIndex === index ? { ...clip, ...patch } : clip
+    ));
+  }
+}
+
+function scheduleIncomingClip(clip) {
+  const key = clipMessageKey(clip);
+  if (!key || (clip.clientId && clip.clientId === selfClientId) || seenMsgIds.has(key)) return;
+  pendingIncomingClips.set(key, clip);
+  if (incomingFrameId) return;
+
+  incomingFrameId = window.requestAnimationFrame(() => {
+    incomingFrameId = 0;
+    const batch = Array.from(pendingIncomingClips.values());
+    pendingIncomingClips.clear();
+    batch.forEach((incomingClip) => {
+      if (upsertClip(incomingClip)) {
+        showToast('success', '收到同步', clipTypeLabel(incomingClip) + ' 已同步到房间。');
+      }
+    });
+  });
 }
 
 function createUploadCard(file) {
@@ -800,17 +825,15 @@ function connectSocket() {
   });
 
   socketInstance.on('clip:sync', (payload) => {
-    if (payload?.room?.expiresAt) roomExpiresAt.value = payload.room.expiresAt;
+    syncRoomMeta(payload?.room);
     if (payload?.clip) {
-      if (upsertClip(payload.clip)) {
-        showToast('success', '收到同步', clipTypeLabel(payload.clip) + ' 已同步到房间。');
-      }
+      scheduleIncomingClip(payload.clip);
     }
   });
 
   socketInstance.on('clip:delete', (payload) => {
     clips.value = clips.value.filter((item) => item.id !== payload?.clipId);
-    if (payload?.room?.expiresAt) roomExpiresAt.value = payload.room.expiresAt;
+    syncRoomMeta(payload?.room);
   });
 
   socketInstance.on('room:settings', (payload) => {
@@ -819,7 +842,7 @@ function connectSocket() {
 
   socketInstance.on('room:cleared', (payload) => {
     clips.value = [];
-    roomExpiresAt.value = Date.now() + roomTtlMinutes.value * 60 * 1000;
+    syncRoomMeta(payload?.room);
     showToast('success', '房间已清空', payload?.reason === 'expired' ? '因长时间无活动自动销毁。' : '房间已手动清空。');
   });
 }
@@ -837,6 +860,7 @@ function syncRoomSettings() {
   socketInstance.emit('room:update-settings', {
     roomId: roomId.value,
     ttlMinutes: roomTtlMinutes.value,
+    mode: roomTtlMinutes.value === 0 ? 'persistent' : 'temporary',
     hostToken: hostToken.value,
   });
 }
@@ -1234,6 +1258,7 @@ function clearRoom() {
     }
     clips.value = [];
     textDraft.value = '';
+    syncRoomMeta(response.room);
     showToast('success', '房间已清空', '所有内容已删除。');
   });
 }
@@ -1268,6 +1293,7 @@ async function refreshQr() {
 
 function syncRoomMeta(room) {
   if (!room) return;
+  if (Object.prototype.hasOwnProperty.call(room, 'mode')) roomMode.value = room.mode || 'temporary';
   if (Object.prototype.hasOwnProperty.call(room, 'ttlMinutes')) roomTtlMinutes.value = Number(room.ttlMinutes);
   if (Object.prototype.hasOwnProperty.call(room, 'expiresAt')) roomExpiresAt.value = room.expiresAt;
 }
@@ -1339,6 +1365,10 @@ onBeforeUnmount(() => {
   if (textTimer) window.clearTimeout(textTimer);
   if (ticker) window.clearInterval(ticker);
   if (qrStamp) window.clearTimeout(qrStamp);
+  if (incomingFrameId) window.cancelAnimationFrame(incomingFrameId);
+  incomingFrameId = 0;
+  pendingIncomingClips.clear();
+  seenMsgIds.clear();
   uploadReaders.forEach((reader) => {
     if (reader.readyState === FileReader.LOADING) reader.abort();
   });
@@ -1356,9 +1386,17 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.clipboard-scroll-list {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 920px;
+  overscroll-behavior: contain;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
 .toast-enter-active,
 .toast-leave-active {
-  transition: all 0.22s ease;
+  transition: opacity 0.22s ease, transform 0.22s ease;
 }
 .toast-enter-from,
 .toast-leave-to {
