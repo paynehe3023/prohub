@@ -1,6 +1,6 @@
 <template>
   <router-link :to="tool.route"
-    class="group relative block p-5 rounded-[28px] motion-interactive liquid-glass hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(0,0,0,0.42)]"
+    class="group relative block p-5 rounded-[28px] motion-interactive liquid-glass hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(15,23,42,0.16)] dark:hover:shadow-[0_16px_36px_rgba(0,0,0,0.42)]"
     :class="{ 'opacity-50 hover:opacity-65 border-dashed': tool.status === 'coming_soon' }">
     <span v-if="tool.isNew"
       class="absolute top-3 right-3 px-2.5 py-0.5 text-[0.625rem] font-semibold tracking-wider rounded-full bg-ios-blue/20 text-ios-blue border border-ios-blue/30">
@@ -14,14 +14,14 @@
       :class="iconBgClass">
       <component :is="iconComp" class="w-5 h-5" :class="iconColorClass" />
     </div>
-    <h3 class="text-base font-semibold text-white mb-1.5 tracking-[-0.022em] text-glass">
+    <h3 class="text-base font-semibold text-slate-900 dark:text-white mb-1.5 tracking-[-0.022em] text-glass">
       {{ tool.title }}
     </h3>
-    <p class="text-[0.8125rem] text-zinc-300 leading-relaxed tracking-[-0.01em] line-clamp-2 text-glass-sm">
+    <p class="text-[0.8125rem] text-slate-600 dark:text-zinc-300 leading-relaxed tracking-[-0.01em] line-clamp-2 text-glass-sm">
       {{ tool.desc }}
     </p>
     <div class="mt-4">
-      <span class="px-2.5 py-0.5 text-[0.6875rem] rounded-full liquid-glass-inset text-zinc-400 text-glass-sm">
+      <span class="px-2.5 py-0.5 text-[0.6875rem] rounded-full liquid-glass-inset text-slate-500 dark:text-zinc-400 text-glass-sm">
         {{ tool.category }}
       </span>
     </div>
@@ -35,5 +35,5 @@ const props = defineProps({ tool: { type: Object, required: true } });
 const iconMap = { IconDownload, IconFileText, IconPhoto, IconPalette, IconArrowsExchange, IconCamera, IconNetwork, IconClipboardText };
 const iconComp = computed(() => iconMap[props.tool.icon] || IconDownload);
 const iconBgClass = computed(() => ({ '协作同步':'bg-ios-blue/20', '媒体/去水印':'bg-ios-blue/20', '文本处理':'bg-ios-green/20', '实用计算':'bg-ios-purple/20' }[props.tool.category] || 'bg-white/10'));
-const iconColorClass = computed(() => ({ '协作同步':'text-ios-blue', '媒体/去水印':'text-ios-blue', '文本处理':'text-ios-green', '实用计算':'text-ios-purple' }[props.tool.category] || 'text-white/70'));
+const iconColorClass = computed(() => ({ '协作同步':'text-ios-blue', '媒体/去水印':'text-ios-blue', '文本处理':'text-ios-green', '实用计算':'text-ios-purple' }[props.tool.category] || 'text-slate-500 dark:text-white/70'));
 </script>

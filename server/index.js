@@ -8,6 +8,7 @@ const parseRoute = require('./routes/parse');
 const removeBgRoute = require('./routes/remove-bg');
 const wallpapersRoute = require('./routes/wallpapers');
 const forbiddenWordsRoute = require('./routes/forbidden-words');
+const feedbackRoute = require('./routes/feedback');
 const { registerClipboardRealtime } = require('./realtime/clipboard');
 
 const app = express();
@@ -29,7 +30,7 @@ app.use(cors({
 }));
 
 // ---- Body parsing ----
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // ---- API routes ----
@@ -37,6 +38,7 @@ app.use('/api', parseRoute);
 app.use('/api', removeBgRoute);
 app.use('/api', wallpapersRoute);
 app.use('/api', forbiddenWordsRoute);
+app.use('/api', feedbackRoute);
 registerClipboardRealtime(app, server);
 
 // ---- Static files (production frontend build) ----

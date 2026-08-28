@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
+  <div class="theme-page max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
     <BreadcrumbNav label="全能极速图片处理工作台" />
 
     <section class="liquid-glass p-5 sm:p-6 mb-5">
@@ -2086,31 +2086,31 @@ onUnmounted(() => {
 <style scoped>
 .exif-date-picker {
   isolation: isolate;
-  background: rgba(24, 24, 27, 0.97);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(148, 163, 184, 0.4);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 18px 45px rgba(0, 0, 0, 0.48);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  backdrop-filter: blur(20px) saturate(150%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 18px 45px rgba(15, 23, 42, 0.18);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  backdrop-filter: blur(16px) saturate(125%);
 }
 
 .liquid-glass-select {
   appearance: none;
-  color-scheme: dark;
-  background-color: rgba(24, 24, 27, 0.72);
+  color-scheme: light;
+  background-color: rgba(248, 250, 252, 0.92);
   background-image:
-    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.72) 50%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.72) 50%, transparent 50%);
+    linear-gradient(45deg, transparent 50%, rgba(71, 85, 105, 0.72) 50%),
+    linear-gradient(135deg, rgba(71, 85, 105, 0.72) 50%, transparent 50%);
   background-position:
     calc(100% - 16px) 50%,
     calc(100% - 11px) 50%;
   background-repeat: no-repeat;
   background-size: 5px 5px, 5px 5px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.42);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 30px rgba(0, 0, 0, 0.12);
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 10px 30px rgba(15, 23, 42, 0.08);
   padding-right: 2.5rem;
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   backdrop-filter: blur(18px) saturate(140%);
@@ -2118,8 +2118,8 @@ onUnmounted(() => {
 }
 
 .liquid-glass-select:hover {
-  background-color: rgba(39, 39, 42, 0.78);
-  border-color: rgba(255, 255, 255, 0.24);
+  background-color: rgba(241, 245, 249, 0.98);
+  border-color: rgba(100, 116, 139, 0.55);
 }
 
 .liquid-glass-select:focus {
@@ -2135,6 +2135,36 @@ onUnmounted(() => {
 }
 
 .liquid-glass-select option {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.dark .exif-date-picker {
+  background: rgba(24, 24, 27, 0.97);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 18px 45px rgba(0, 0, 0, 0.48);
+}
+
+.dark .liquid-glass-select {
+  color-scheme: dark;
+  background-color: rgba(24, 24, 27, 0.72);
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.72) 50%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72) 50%, transparent 50%);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+.dark .liquid-glass-select:hover {
+  background-color: rgba(39, 39, 42, 0.78);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.dark .liquid-glass-select option {
   background: #18181b;
   color: #fff;
 }

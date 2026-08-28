@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
+  <div class="theme-page max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
     <BreadcrumbNav label="自媒体全流程创作与安全工作台" />
 
     <section class="liquid-glass p-5 sm:p-6 mb-5">

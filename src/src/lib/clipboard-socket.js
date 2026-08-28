@@ -89,15 +89,22 @@ function createClientId() {
 
 function waitForMilliseconds(milliseconds, abortSignal) {
   return new Promise((resolve) => {
-    const timeoutId = window.setTimeout(resolve, milliseconds);
-
-    if (abortSignal) {
-      const abortHandler = () => {
-        window.clearTimeout(timeoutId);
-        resolve();
-      };
-      abortSignal.addEventListener('abort', abortHandler, { once: true });
-    }
+    let settled = false;
+    let timeoutId = 0;
+    const abortHandler = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      abortSignal?.removeEventListener('abort', abortHandler);
+      resolve();
+    };
+    timeoutId = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      abortSignal?.removeEventListener('abort', abortHandler);
+      resolve();
+    }, milliseconds);
+    abortSignal?.addEventListener('abort', abortHandler, { once: true });
   });
 }
 
@@ -190,11 +197,14 @@ async function consumeEventStream(response, onEvent, abortSignal) {
   }
 }
 
-function buildStreamUrl(baseUrl, roomId, clientId, ttlMinutes) {
+function buildStreamUrl(baseUrl, roomId, clientId, ttlMinutes, options = {}) {
   const streamUrl = new URL('/api/clipboard/stream', baseUrl);
   streamUrl.searchParams.set('roomId', roomId);
   streamUrl.searchParams.set('clientId', clientId);
   streamUrl.searchParams.set('ttlMinutes', String(ttlMinutes));
+  if (options.hostToken) streamUrl.searchParams.set('hostToken', String(options.hostToken));
+  if (options.deviceType) streamUrl.searchParams.set('deviceType', String(options.deviceType));
+  if (options.deviceLocation) streamUrl.searchParams.set('deviceLocation', String(options.deviceLocation));
   return streamUrl.toString();
 }
 
@@ -226,7 +236,10 @@ export function io(baseUrl, options = {}) {
     baseUrl: normalizeBaseUrl(baseUrl),
     roomId: normalizeRoomId(options.roomId || options.query?.roomId),
     ttlMinutes: normalizeTtlMinutes(options.ttlMinutes, 15),
-    clientId: createClientId(),
+    clientId: options.query?.clientId || options.auth?.clientId || createClientId(),
+    hostToken: options.query?.hostToken || options.auth?.hostToken || '',
+    deviceType: options.query?.deviceType || 'PC',
+    deviceLocation: options.query?.deviceLocation || '',
     connected: false,
     everConnected: false,
     destroyed: false,
@@ -246,7 +259,7 @@ export function io(baseUrl, options = {}) {
     }
 
     state.connectAbortController = new AbortController();
-    const streamUrl = buildStreamUrl(state.baseUrl, state.roomId, state.clientId, state.ttlMinutes);
+    const streamUrl = buildStreamUrl(state.baseUrl, state.roomId, state.clientId, state.ttlMinutes, state);
     const response = await fetch(streamUrl, {
       method: 'GET',
       headers: {
@@ -345,7 +358,13 @@ export function io(baseUrl, options = {}) {
         roomId: normalizeRoomId(payload.roomId || state.roomId),
         clientId: payload.clientId || state.clientId,
         event: eventName,
-        payload,
+        payload: {
+          ...payload,
+          clientId: payload.clientId || state.clientId,
+          deviceType: payload.deviceType || state.deviceType,
+          deviceLocation: payload.deviceLocation || state.deviceLocation,
+          hostToken: payload.hostToken || state.hostToken,
+        },
       };
 
       const requestPromise = postClipboardEvent(state.baseUrl, requestPayload)

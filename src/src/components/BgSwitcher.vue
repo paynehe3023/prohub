@@ -1,9 +1,9 @@
 <template>
-  <div ref="switcherRef" class="fixed bottom-6 left-6 z-40 flex flex-col gap-2">
+  <div ref="switcherRef" class="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-[calc(1.5rem+env(safe-area-inset-left))] z-[80] flex flex-col gap-2">
     <button
       type="button"
       @click="open = !open"
-      class="w-9 h-9 rounded-full liquid-glass flex items-center justify-center text-white/70 hover:text-white hover:shadow-md active:scale-95 motion-interactive text-[0.625rem] font-bold"
+      class="h-10 w-10 rounded-2xl liquid-glass flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-slate-800 dark:hover:text-white hover:shadow-lg active:scale-95 motion-interactive text-[0.625rem] font-bold"
       title="换背景"
       aria-label="换背景"
       :aria-expanded="open"
@@ -14,12 +14,12 @@
     <Transition name="switcher">
       <div v-if="open" class="liquid-glass p-3 flex flex-col gap-3 w-64 max-h-[min(72vh,560px)] overflow-y-auto" @click.stop>
         <div class="flex items-center justify-between gap-3">
-          <p class="text-xs font-semibold text-white text-glass">背景设置</p>
-          <span class="text-[0.625rem] text-zinc-400 text-glass-sm">自动保存</span>
+          <p class="text-xs font-semibold text-slate-900 dark:text-white text-glass">背景设置</p>
+          <span class="text-[0.625rem] text-slate-500 dark:text-zinc-400 text-glass-sm">自动保存</span>
         </div>
 
         <section>
-          <p class="mb-2 text-[0.625rem] text-zinc-400 text-glass-sm">纯色背景</p>
+          <p class="mb-2 text-[0.625rem] text-slate-500 dark:text-zinc-400 text-glass-sm">纯色背景</p>
           <div class="grid grid-cols-2 gap-2">
             <button
               v-for="background in solidPresets"
@@ -37,7 +37,7 @@
         </section>
 
         <section>
-          <p class="mb-2 text-[0.625rem] text-zinc-400 text-glass-sm">内置壁纸</p>
+          <p class="mb-2 text-[0.625rem] text-slate-500 dark:text-zinc-400 text-glass-sm">内置壁纸</p>
           <button
             type="button"
             @click="applyBackground(defaultWallpaper)"
@@ -51,15 +51,15 @@
 
         <section>
           <div class="flex items-center justify-between gap-2 mb-2">
-            <p class="text-[0.625rem] text-zinc-400 text-glass-sm">Bing 最近 7 天</p>
-            <button type="button" @click="loadBingWallpapers" class="text-[0.625rem] text-ios-blue hover:text-white transition-colors" :disabled="bingLoading">
+            <p class="text-[0.625rem] text-slate-500 dark:text-zinc-400 text-glass-sm">Bing 最近 7 天</p>
+            <button type="button" @click="loadBingWallpapers" class="text-[0.625rem] text-ios-blue hover:text-slate-950 dark:hover:text-white transition-colors" :disabled="bingLoading">
               {{ bingLoading ? '加载中' : '刷新' }}
             </button>
           </div>
-          <div v-if="bingLoading && !bingWallpapers.length" class="rounded-xl liquid-glass-inset px-3 py-4 text-center text-[0.6875rem] text-zinc-400">
+          <div v-if="bingLoading && !bingWallpapers.length" class="rounded-xl liquid-glass-inset px-3 py-4 text-center text-[0.6875rem] text-slate-500 dark:text-zinc-400">
             正在获取壁纸...
           </div>
-          <div v-else-if="bingError && !bingWallpapers.length" class="rounded-xl liquid-glass-inset px-3 py-3 text-[0.6875rem] text-zinc-400">
+          <div v-else-if="bingError && !bingWallpapers.length" class="rounded-xl liquid-glass-inset px-3 py-3 text-[0.6875rem] text-slate-500 dark:text-zinc-400">
             Bing 壁纸暂时不可用，仍可使用内置背景。
           </div>
           <div v-else class="grid grid-cols-2 gap-2">
@@ -78,7 +78,7 @@
           </div>
         </section>
 
-         <label class="w-full h-8 rounded-xl liquid-glass-inset flex items-center justify-center text-[0.625rem] text-zinc-400 hover:text-white cursor-pointer motion-interactive text-glass-sm">
+         <label class="w-full h-8 rounded-xl liquid-glass-inset flex items-center justify-center text-[0.625rem] text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white cursor-pointer motion-interactive text-glass-sm">
           自定义图片...
           <input type="file" accept="image/*" class="hidden" @change="onCustom" />
         </label>
@@ -142,7 +142,6 @@ function applyBodyBackground(background) {
   rootStyle.setProperty('--prohub-background-color', background.color || (imageUrl ? '#111827' : '#F2F2F7'));
   bodyStyle.backgroundImage = 'none';
   bodyStyle.backgroundColor = 'transparent';
-  bodyStyle.color = background.textColor || '';
   document.body.dataset.backgroundId = background.id;
 }
 

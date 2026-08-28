@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-10">
+  <div class="theme-page max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-10">
     <BreadcrumbNav label="证件照一键换底" />
 
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">

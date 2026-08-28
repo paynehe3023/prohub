@@ -935,3 +935,34 @@ ps1 -StopDev`
 - `RealtimeClipboard.vue` 增加移动端滚动容器能力、横向溢出保护和卡片列表 `Fade-In-Up + 轻微缩放` 进场动画，使用 `cubic-bezier(0.16, 1, 0.3, 1)` 保持自然弹性。
 - 移动端按钮、链接和可点击标签统一增加 `150ms` 触控反馈与 `scale(0.95)` 按压效果，并保留 `prefers-reduced-motion` 用户的减弱动效能力。
 - 验证：前端 `npm run build`、`git diff --check` 通过；构建仍仅提示已有的 `heic2any` 大 chunk 警告，不影响结果。
+
+### 三十. 剪贴板房间生命周期、设备管理与反馈模块（2026-08-28）
+
+- 重构剪贴板房间生命周期：新增“切换/加入房间”流程，切换前清理旧 Socket/SSE、上传请求、读取器、消息去重锁、动画帧和临时预览 URL，并通过路由参数无刷新进入目标房间。
+- 完善 Host/Guest 状态隔离：Host 主动销毁房间、刷新或断开连接时广播 `HOST_DISCONNECTED`；Guest 锁定发送区域并显示 5 秒倒计时，倒计时结束后自动生成新的独立 Host 房间。
+- 新增 Host 踢人能力：在线设备面板展示设备连接标识、IP、客户端地区信息和设备类型，Host 可单独移除 Guest，Guest 收到 `KICK_DEVICE` 后清理连接并自动重置。
+- 修复实时收包边界：SSE 连接携带 Host Token、设备类型和地区信息；历史同步使用 `SYNC_HISTORY_STATE` 全量覆盖；发送者收到自己的 `clip:sync` 回包，避免发送端不显示或产生重复记录。
+- 修复房间配置同步：Host 修改 TTL 或持久化模式时同步 `ROOM_CONFIG_SYNC`，Guest 使用绝对过期时间启动本地倒计时；永久房间使用 `0` 分钟并停止计时器。
+- 新增 `FeedbackModal.vue`：支持反馈类型、500 字内容限制、PNG/JPG 拖拽/选择/粘贴附件、3MB 单图校验、联系方式、60 秒本地提交冷却和蜜罐字段。
+- 新增后端 `/api/feedback`：使用 Nodemailer 通过 QQ SMTP 向 `947919822@qq.com` 发送格式化 HTML 邮件和图片附件；支持通过 `VITE_FEEDBACK_FALLBACK_URL` 配置前端备用接口。
+- Header“关于”卡片增加反馈入口和高层级成功提示；Docker Compose 增加 SMTP 环境变量透传，未配置授权码时接口明确返回配置提示，不泄露密钥。
+- 验证：前端 `npm run build`、`node --check server/index.js`、`node --check server/realtime/clipboard.js`、`node --check server/routes/feedback.js`、`git diff --check` 通过。服务器本机运行冒烟测试受 `server/node_modules` 未安装影响，需在 Docker 或安装后端依赖的环境中验证 SMTP 和实时连接。
+
+### 三十.1 全局主题、房间恢复与设备信息适配（2026-08-28）
+
+- 新增 `useTheme.ts` 统一管理 `light`、`dark`、`system` 三种主题模式，持久化到 `localStorage`，同步 `<html>` 的 `dark` 类、`data-theme` 和 `color-scheme`；`index.html` 首屏脚本提前同步主题，减少 FOUC 闪烁。
+- 重构全局语义色变量和固定背景层：背景使用独立的 `fixed inset-0` 图层，内容区使用 `min-h-dvh` 自然滚动，浅色模式与深色模式分别提供可读的页面、卡片、边框和文字颜色。
+- Header、Footer、首页、图片工作台、自媒体工作台、无水印解析、证件照、CIDR、即将上线、反馈弹窗和房间弹窗补充浅色/深色适配；反馈入口和赞赏入口统一收拢至右下角悬浮工具栏，新增 `DonateModal.vue`。
+- 房间状态增加 `sessionStorage`/`localStorage` 恢复线索：Host 刷新或服务端内存重启后可使用原房间号重新创建，Guest 遇到 `ROOM_NOT_FOUND` 自动等待并重试，避免直接永久断开。
+- 后端统一提取真实 IPv4，过滤 IPv6、回环地址和 `::ffff:` 前缀；局域网设备显示“局域网”，公网 IPv4 异步补充城市/地区信息并缓存，在线设备列表不再展示原始 IPv6。
+- 优化剪贴板页面底部安全间距、在线设备面板、Toast、加入房间弹窗和文本预览弹窗，避免浅色模式黑底黑字、移动端浮动工具栏遮挡内容和层级冲突。
+- 补强反馈弹窗、房间销毁提示、加入房间提示和在线设备面板的浅色模式文字对比度，并补全反馈邮箱复制事件声明。
+- 验证：前端 `npm run build`、后端 `node --check server/index.js`、`node --check server/realtime/clipboard.js`、`git diff --check` 通过；Docker 开发环境的前端 `5173`、后端 `3001`、rembg `8081` 服务保持运行。
+
+### 三十.2 剪贴板移动端交互与上传性能优化（2026-08-28）
+
+- 新增统一 `BackButton.vue`，面包屑页面、证件照页面和房间页面均支持智能返回；无历史路由时自动回到首页。
+- Toast 提升至 `z-[9999]`，移动端使用安全区顶部定位；“关于”弹窗改为 `80dvh` 可滚动布局并移除重复反馈入口。
+- 更新移动端 viewport、触控策略和左右悬浮控件安全区间距，调整在线设备面板位置，避免与全局反馈/赞赏工具栏重叠。
+- 剪贴板文本输入和消息正文补充浅色模式高对比度颜色；房间页面保留 `text-slate-900 dark:text-slate-100` 显式映射。
+- JPEG/PNG 超过 1MB 时在浏览器本地异步缩放至最长边 2048px 并以 0.85 质量压缩；GIF/SVG 跳过压缩，上传增加 120 秒超时和最多 2 次自动重试，取消与卸载时清理重试定时器。

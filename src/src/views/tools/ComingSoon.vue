@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+  <div class="theme-page max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <BreadcrumbNav label="即将上线" />
     <div class="text-center py-16">
       <div class="w-20 h-20 mx-auto mb-5 rounded-[20px] liquid-glass flex items-center justify-center">

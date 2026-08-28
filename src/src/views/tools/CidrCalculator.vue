@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-10">
+  <div class="theme-page max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-10">
     <BreadcrumbNav label="CIDR 子网划分与重叠校验" />
 
     <div class="grid grid-cols-1 xl:grid-cols-[420px_minmax(0,1fr)] gap-6">

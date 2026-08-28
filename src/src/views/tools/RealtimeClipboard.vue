@@ -1,6 +1,17 @@
 <template>
-  <div class="mobile-interface-shell min-h-screen overflow-x-hidden py-8 px-4">
+  <div class="mobile-interface-shell min-h-dvh overflow-x-hidden px-4 py-8 pb-32 text-slate-900 dark:text-slate-100 overflow-y-auto">
     <div class="max-w-7xl mx-auto space-y-6">
+      <BackButton />
+      <div v-if="isRoomDestroyed && !isHost" class="rounded-3xl border border-amber-300/70 bg-gradient-to-r from-amber-500/20 via-rose-500/20 to-rose-600/20 px-5 py-4 text-amber-900 shadow-xl shadow-rose-950/20 dark:text-amber-100">
+        <div class="flex items-start gap-3">
+          <IconAlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-300" />
+          <div class="min-w-0">
+            <p class="font-semibold">Host 已退出，房间已被销毁</p>
+            <p class="mt-1 text-sm leading-6 text-amber-800/80 dark:text-amber-100/80">界面将在 {{ roomResetCountdown }} 秒后自动重置为您的独立 Host 房间。</p>
+          </div>
+        </div>
+      </div>
+
       <section v-if="isHost" class="mobile-glass-card rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl shadow-xl overflow-hidden">
         <div class="mobile-glass-card p-6 md:p-8 bg-gradient-to-br from-slate-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
           <div class="flex flex-col xl:flex-row xl:items-start gap-6">
@@ -22,6 +33,10 @@
                   <IconClipboardText size="14" />
                   最多 {{ maxClips }} 条
                 </span>
+                <button type="button" @click="openJoinRoomModal" class="inline-flex items-center gap-1.5 rounded-full border border-sky-300/70 bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-500/20 dark:border-sky-700/70 dark:text-sky-300">
+                  <IconDoorEnter size="14" />
+                  切换/加入房间
+                </button>
               </div>
 
               <div>
@@ -90,9 +105,15 @@
                   <p class="text-xs uppercase tracking-[0.24em] text-slate-400">房间二维码</p>
                   <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">手机扫码直接进入同一房间</p>
                 </div>
+                <div class="flex items-center gap-2">
                 <button type="button" @click="refreshQr" class="text-xs font-medium text-sky-600 hover:text-sky-500 inline-flex items-center gap-1">
                   <IconRefresh size="14" /> 刷新
                 </button>
+                <button type="button" @click="destroyRoomAndExit" class="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-900/30">
+                  <IconDoorExit size="14" />
+                  退出并销毁
+                </button>
+                </div>
               </div>
 
               <div class="mt-4 rounded-2xl bg-white p-3 flex items-center justify-center border border-slate-200">
@@ -129,6 +150,10 @@
               <IconClockHour4 size="14" />
               {{ remainingText }}
             </span>
+            <button type="button" @click="openJoinRoomModal" class="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-100 dark:border-sky-900/50 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/40">
+              <IconDoorEnter size="14" />
+              切换/加入
+            </button>
           </div>
           <span class="text-xs text-slate-500 dark:text-slate-400">点击房间号复制链接</span>
         </div>
@@ -142,10 +167,10 @@
               <h2 class="text-lg font-bold text-slate-900 dark:text-white">文本同步</h2>
             </div>
 
-            <textarea v-model="textDraft" @paste="handleTextPaste" @keydown.ctrl.enter.prevent="sendTextNow" @input="scheduleTextSend" rows="8" placeholder="在这里输入内容，或直接 Ctrl+V 粘贴文本/截图/文件。" class="mobile-glass-inset w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sky-500 resize-none" />
+            <textarea v-model="textDraft" :disabled="isInputDisabled" @paste="handleTextPaste" @keydown.ctrl.enter.prevent="sendTextNow" @keydown.meta.enter.prevent="sendTextNow" rows="8" placeholder="在这里输入内容，点击“立即同步”或按 Ctrl/Cmd + Enter 发送。" class="mobile-glass-inset w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-sky-500 resize-none disabled:cursor-not-allowed disabled:opacity-50" />
 
             <div class="mt-3 flex flex-wrap gap-2">
-              <button type="button" @click="sendTextNow" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-700 transition-colors">
+              <button type="button" :disabled="isInputDisabled" @click="sendTextNow" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
                 <IconSend size="16" />
                 立即同步
               </button>
@@ -164,7 +189,7 @@
             <p class="text-sm text-slate-600 dark:text-slate-400 leading-6">支持截图粘贴、图片拖拽、文件拖拽。小图片直接内联同步，大文件自动走临时链接广播。</p>
             <p class="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">支持图片及常用文档，单文件最大 50MB</p>
             <div class="mt-4 flex flex-wrap gap-2">
-              <button type="button" :disabled="uploading" @click="triggerFilePick" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 text-white text-sm font-medium hover:bg-sky-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" :disabled="uploading || isInputDisabled" @click="triggerFilePick" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 text-white text-sm font-medium hover:bg-sky-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
                 <IconPhoto size="16" />
                 {{ uploading ? '传输中...' : '选择图片/文件' }}
               </button>
@@ -214,7 +239,7 @@
                   </div>
                   <p class="mt-1 truncate text-xs text-slate-300">{{ displayFileName(clip.fileName, 'clipboard-file') }}</p>
                   <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15 md:mt-3 md:h-2">
-                    <div class="h-full rounded-full bg-sky-400 transition-[width] duration-150" :class="clip.transferStatus === 'failed' ? 'bg-rose-400' : ''" :style="{ width: `${clip.transferProgress || 0}%` }"></div>
+                    <div class=" rounded-full bg-sky-400 transition-[width] duration-150" :class="clip.transferStatus === 'failed' ? 'bg-rose-400' : ''" :style="{ width: `${clip.transferProgress || 0}%` }"></div>
                   </div>
                   <p class="mt-2 hidden text-[0.6875rem] text-slate-400 md:block">{{ clip.transferStatus === 'uploading' ? '请保持页面打开，传输完成后即可预览和下载。' : (clip.transferError || '文件传输失败') }}</p>
                 </div>
@@ -255,7 +280,7 @@
 
               <div class="mt-4">
                  <div v-if="clip.kind === 'text'" class="mobile-glass-inset rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 p-4">
-                  <pre class="whitespace-pre-wrap break-words text-sm leading-7 text-slate-800 dark:text-slate-100 font-mono">{{ clip.text }}</pre>
+                  <pre class="whitespace-pre-wrap break-words text-sm leading-7 text-slate-900 dark:text-slate-100 font-mono">{{ clip.text }}</pre>
                 </div>
 
                 <div v-else-if="clip.kind === 'image'" class="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)] items-start">
@@ -286,7 +311,7 @@
       </div>
     </div>
 
-    <div class="fixed right-4 top-4 z-50 space-y-2 w-[min(92vw,360px)] pointer-events-none">
+    <div class="fixed right-4 top-[calc(4.5rem+env(safe-area-inset-top))] z-[9999] space-y-2 w-[min(92vw,360px)] pointer-events-none">
       <transition-group name="toast" tag="div" class="space-y-2">
         <div v-for="toast in toasts" :key="toast.id" class="pointer-events-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl shadow-xl px-4 py-3 text-sm flex items-start gap-3">
           <span class="mt-0.5" :class="toastToneClass(toast.type)">
@@ -300,21 +325,93 @@
       </transition-group>
     </div>
 
-    <div v-if="textPreview.open" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" @click.self="closeTextPreview">
-      <section class="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 text-white shadow-2xl">
-        <div class="flex items-center justify-between gap-4 border-b border-slate-800 px-5 py-4">
+    <div class="fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] right-[calc(1rem+env(safe-area-inset-right))] z-50 w-[min(92vw,320px)]">
+      <section v-if="devicesPanelOpen" class="mb-2 rounded-2xl border border-slate-200 bg-white/95 p-3 text-slate-900 shadow-2xl shadow-slate-900/15 backdrop-blur-md dark:border-slate-700 dark:bg-slate-950/95 dark:text-white" @click.stop>
+        <div class="flex items-center justify-between gap-3 border-b border-slate-200 pb-2 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <IconUsers class="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+            <h2 class="text-sm font-semibold">在线设备</h2>
+          </div>
+          <button type="button" @click="devicesPanelOpen = false" class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white" aria-label="收起在线设备面板">
+            <IconX size="16" />
+          </button>
+        </div>
+        <div class="mt-3 space-y-2">
+          <div v-for="device in onlineDevices" :key="device.id" class="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/70">
+            <component :is="device.deviceType === 'Mobile' ? IconDeviceMobile : IconDeviceDesktop" class="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-xs font-medium text-slate-700 dark:text-slate-200">
+                {{ device.ip }} · {{ device.location }}
+              </p>
+              <p v-if="device.isSelf" class="mt-0.5 text-[0.6875rem] text-emerald-700 dark:text-emerald-300">当前设备（本机）</p>
+            </div>
+            <button v-if="isHost && !device.isSelf" type="button" @click="kickDevice(device)" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-rose-300 hover:bg-rose-950/60 hover:text-rose-200" aria-label="踢出设备" title="踢出设备">
+              <IconUserMinus size="16" />
+            </button>
+          </div>
+          <p v-if="!onlineDevices.length" class="py-3 text-center text-xs text-slate-500">暂无设备信息</p>
+        </div>
+      </section>
+      <button type="button" @click="devicesPanelOpen = !devicesPanelOpen" class="ml-auto inline-flex items-center gap-2 rounded-full border border-emerald-300/50 bg-white/90 px-3 py-2 text-xs font-semibold text-emerald-700 shadow-xl shadow-slate-900/10 backdrop-blur-md hover:bg-emerald-50 dark:border-emerald-300/30 dark:bg-slate-950/90 dark:text-emerald-200 dark:hover:bg-slate-900">
+        <span class="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]"></span>
+        {{ onlineDevices.length }} 台设备在线
+      </button>
+    </div>
+
+    <div v-if="roomLockOpen" class="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm dark:bg-slate-950/70" @click.self="roomLockOpen = false">
+      <section class="w-full max-w-sm rounded-3xl border border-rose-200 bg-white p-6 text-slate-900 shadow-2xl dark:border-rose-400/40 dark:bg-gradient-to-br dark:from-slate-950 dark:via-rose-950/80 dark:to-slate-950 dark:text-white">
+        <div class="flex items-start gap-3">
+          <IconShieldX class="mt-0.5 h-6 w-6 shrink-0 text-rose-300" />
+          <div>
+            <h2 class="text-lg font-bold">您已被房主移出房间</h2>
+            <p class="mt-2 text-sm leading-6 text-rose-700/80 dark:text-rose-100/80">原房间连接已断开，{{ roomResetCountdown }} 秒后将自动创建您的独立 Host 房间。</p>
+          </div>
+        </div>
+        <button type="button" @click="roomLockOpen = false" class="mt-5 w-full rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-50 dark:border-rose-300/30 dark:text-rose-100 dark:hover:bg-rose-400/10">知道了</button>
+      </section>
+    </div>
+
+    <div v-if="joinRoomOpen" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm dark:bg-slate-950/70" @click.self="closeJoinRoomModal">
+      <section class="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950/95 dark:text-white">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs uppercase tracking-[0.2em] text-sky-600 dark:text-sky-300">Room switch</p>
+            <h2 class="mt-1 text-xl font-bold">切换 / 加入房间</h2>
+          </div>
+          <button type="button" @click="closeJoinRoomModal" class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white" aria-label="关闭加入房间弹窗">
+            <IconX size="18" />
+          </button>
+        </div>
+        <p class="mt-4 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-3 py-2.5 text-sm leading-6 text-amber-900 dark:text-amber-100">切换房间将断开当前连接，当前房间的本地列表也会被清空。</p>
+        <label class="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200">
+          房间码
+          <input v-model="joinRoomDraft" @input="joinRoomDraft = normalizeRoomIdInput(joinRoomDraft)" maxlength="24" autocomplete="off" placeholder="输入房间码" class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 font-mono text-sm uppercase tracking-[0.18em] text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-500/30 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+        </label>
+        <div class="mt-5 flex justify-end gap-2">
+          <button type="button" @click="closeJoinRoomModal" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900">取消</button>
+          <button type="button" :disabled="joiningRoom" @click="submitJoinRoom" class="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50">
+            <IconLoader2 v-if="joiningRoom" class="h-4 w-4 animate-spin" />
+            立即加入
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="textPreview.open" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm dark:bg-slate-950/70" @click.self="closeTextPreview">
+      <section class="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+        <div class="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
           <div class="min-w-0">
             <h2 class="truncate text-base font-bold">{{ textPreview.fileName }}</h2>
-            <p class="mt-1 text-xs text-slate-400">文本文件预览</p>
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">文本文件预览</p>
           </div>
-          <button type="button" @click="closeTextPreview" aria-label="关闭文本预览" title="关闭" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-800 hover:text-white">
+          <button type="button" @click="closeTextPreview" aria-label="关闭文本预览" title="关闭" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white">
             <IconX size="18" />
           </button>
         </div>
         <div class="min-h-0 overflow-auto p-5">
           <div v-if="textPreview.loading" class="py-12 text-center text-sm text-slate-400">正在读取文件...</div>
           <div v-else-if="textPreview.error" class="rounded-2xl border border-rose-900/60 bg-rose-950/30 p-4 text-sm text-rose-300">{{ textPreview.error }}</div>
-          <pre v-else class="whitespace-pre-wrap break-words rounded-2xl bg-slate-900 p-4 text-sm leading-7 text-slate-200">{{ textPreview.content }}</pre>
+          <pre v-else class="whitespace-pre-wrap break-words rounded-2xl bg-slate-100 p-4 text-sm leading-7 text-slate-800 dark:bg-slate-900 dark:text-slate-200">{{ textPreview.content }}</pre>
         </div>
       </section>
     </div>
@@ -328,12 +425,17 @@ import { useRoute, useRouter } from 'vue-router';
 import QRCode from 'qrcode';
 import { io } from 'socket.io-client';
 import { apiConfig } from '../../config/api';
+import BackButton from '../../components/BackButton.vue';
 import {
+  IconAlertTriangle,
   IconCheck,
   IconClipboardText,
   IconClockHour4,
   IconCopy,
+  IconDeviceDesktop,
   IconDeviceMobile,
+  IconDoorEnter,
+  IconDoorExit,
   IconDownload,
   IconEye,
   IconEyeOff,
@@ -343,7 +445,10 @@ import {
   IconPhoto,
   IconRefresh,
   IconSend,
+  IconShieldX,
   IconTrash,
+  IconUserMinus,
+  IconUsers,
   IconUpload,
   IconWifi,
   IconWifiOff,
@@ -365,19 +470,36 @@ const defaultShareOrigin = apiConfig.publicOrigin || window.location.origin;
 const SHARE_ORIGIN_STORAGE_KEY = 'prohub-clipboard-share-origin';
 const HOST_TOKEN_STORAGE_PREFIX = 'prohub-clipboard-host-token:';
 const CLIENT_ID_STORAGE_KEY = 'prohub-clipboard-client-id';
+const ROOM_STATE_STORAGE_KEY = 'prohub-clipboard-room-state';
 const shareOriginDraft = ref(defaultShareOrigin);
 const ttlOptions = [0, 5, 10, 15, 30, 60];
 const maxClips = 20;
 const inlineImageThreshold = 750 * 1024;
+const imageCompressionThreshold = 1 * 1024 * 1024;
+const imageCompressionMaxEdge = 2048;
+const imageCompressionQuality = 0.85;
+const uploadTimeoutMs = 120000;
+const maxUploadRetries = 2;
 const maxFileBytes = 50 * 1024 * 1024;
 
 const roomId = ref('');
 const isHost = ref(false);
+const role = ref('guest');
 const hostToken = ref('');
 const roomCodeVisible = ref(false);
 const roomTtlMinutes = ref(15);
 const roomMode = ref('temporary');
 const roomExpiresAt = ref(Date.now() + 15 * 60 * 1000);
+const isRoomDestroyed = ref(false);
+const isInputDisabled = ref(false);
+const roomResetCountdown = ref(5);
+const roomResetReason = ref('');
+const roomLockOpen = ref(false);
+const joinRoomOpen = ref(false);
+const joinRoomDraft = ref('');
+const joiningRoom = ref(false);
+const devicesPanelOpen = ref(false);
+const onlineDevices = ref([]);
 const clips = shallowRef([]);
 const textDraft = ref('');
 const qrCodeDataUrl = ref('');
@@ -396,17 +518,22 @@ const textPreview = ref({
 });
 
 let socketInstance = null;
-let textTimer = null;
 let ticker = null;
-let lastSentText = '';
 let qrStamp = 0;
 let visibilityHandler = null;
+let beforeUnloadHandler = null;
+let roomResetTimer = null;
+let roomRetryTimer = null;
+let pendingRoomNavigation = null;
 const uploadRequests = new Map();
 const uploadReaders = new Map();
+const uploadRetryTimers = new Map();
+const preparingUploads = new Set();
 const cancelledUploads = new Set();
 const seenMsgIds = new Set();
 const pendingTextMessages = new Map();
 const pendingIncomingClips = new Map();
+const toastTimers = new Map();
 let incomingFrameId = 0;
 
 function getClientId() {
@@ -451,7 +578,7 @@ const sortedClips = computed(() => [...clips.value].sort((left, right) => right.
 const shareOrigin = computed(() => normalizeBaseUrl(shareOriginDraft.value) || defaultShareOrigin);
 const roomUrl = computed(() => (roomId.value ? shareOrigin.value + '/clipboard/' + roomId.value : ''));
 const displayRoomId = computed(() => (roomCodeVisible.value ? roomId.value : maskRoomId(roomId.value)));
-const displayRoomUrl = computed(() => (roomId.value ? shareOrigin.value + '/clipboard/' + displayRoomId.value : ''));
+const displayRoomUrl = computed(() => roomUrl.value);
 const isLocalShareOrigin = computed(() => {
   try {
     return isLoopbackHost(new URL(shareOrigin.value).hostname);
@@ -496,6 +623,18 @@ function normalizeRoomId(value) {
   return candidate.length >= 4 ? candidate.slice(0, 24) : '';
 }
 
+function normalizeRoomIdInput(value) {
+  return String(value || '').replace(/\s+/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
+}
+
+function getDeviceType() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ? 'Mobile' : 'PC';
+}
+
+function getDeviceLocation() {
+  return '未知地区';
+}
+
 function createMessageId() {
   if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -528,7 +667,43 @@ function forgetHostToken(value) {
   }
 }
 
-async function requestRoomSession(nextRoomId, intent = 'join') {
+function readPersistedRoomState() {
+  const storages = [window.sessionStorage, window.localStorage];
+  for (const storage of storages) {
+    try {
+      const value = JSON.parse(storage.getItem(ROOM_STATE_STORAGE_KEY) || 'null');
+      if (value?.roomId) return value;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function persistRoomState(nextRoomId, nextRole) {
+  const value = {
+    roomId: normalizeRoomId(nextRoomId),
+    role: nextRole === 'host' ? 'host' : 'guest',
+    updatedAt: Date.now(),
+  };
+  if (!value.roomId) return;
+  for (const storage of [window.sessionStorage, window.localStorage]) {
+    try {
+      storage.setItem(ROOM_STATE_STORAGE_KEY, JSON.stringify(value));
+    } catch {
+      continue;
+    }
+  }
+}
+
+function clearRoomSessionRetry() {
+  if (roomRetryTimer) {
+    window.clearTimeout(roomRetryTimer);
+    roomRetryTimer = null;
+  }
+}
+
+async function requestRoomSession(nextRoomId, intent = 'join', { forceGuest = false } = {}) {
   const normalizedRoomId = normalizeRoomId(nextRoomId);
   if (!normalizedRoomId) throw new Error('房间号无效');
 
@@ -538,7 +713,7 @@ async function requestRoomSession(nextRoomId, intent = 'join') {
     body: JSON.stringify({
       roomId: normalizedRoomId,
       intent,
-      hostToken: readHostToken(normalizedRoomId),
+      hostToken: forceGuest ? '' : readHostToken(normalizedRoomId),
       ttlMinutes: roomTtlMinutes.value,
     }),
   });
@@ -548,14 +723,16 @@ async function requestRoomSession(nextRoomId, intent = 'join') {
   }
 
   roomId.value = normalizedRoomId;
-  const confirmedHost = data.role === 'host' && Boolean(data.hostToken);
+  const confirmedHost = !forceGuest && data.role === 'host' && Boolean(data.hostToken);
   isHost.value = confirmedHost;
+  role.value = confirmedHost ? 'host' : 'guest';
   hostToken.value = confirmedHost ? String(data.hostToken) : '';
   if (isHost.value && hostToken.value) {
     rememberHostToken(normalizedRoomId, hostToken.value);
   } else if (!isHost.value) {
     forgetHostToken(normalizedRoomId);
   }
+  persistRoomState(normalizedRoomId, role.value);
   syncRoomMeta(data.room);
   syncRoomConfig(data.config);
   return data;
@@ -564,9 +741,11 @@ async function requestRoomSession(nextRoomId, intent = 'join') {
 function showToast(type, title, message) {
   const id = createMessageId();
   toasts.value.unshift({ id, type, title, message });
-  window.setTimeout(() => {
+  const timerId = window.setTimeout(() => {
     toasts.value = toasts.value.filter((toast) => toast.id !== id);
+    toastTimers.delete(id);
   }, 2600);
+  toastTimers.set(id, timerId);
 }
 
 function toastIcon(type) {
@@ -767,6 +946,68 @@ function getAbsoluteUrl(url) {
   return window.location.origin + url;
 }
 
+function syncOnlineDevices(payload) {
+  const devices = Array.isArray(payload?.devices) ? payload.devices : [];
+  onlineDevices.value = devices.map((device) => ({
+    id: String(device.id || device.connectionId || device.clientId || ''),
+    clientId: String(device.clientId || ''),
+    ip: String(device.ip || '未知 IP'),
+    location: String(device.location || '未知地区'),
+    isSelf: Boolean(device.isSelf) || String(device.clientId || '') === selfClientId || String(device.id || '') === String(socketInstance?.id || ''),
+    deviceType: device.deviceType === 'Mobile' ? 'Mobile' : 'PC',
+  })).filter((device) => device.id);
+}
+
+function joinSocketRoom() {
+  if (!socketInstance) return;
+  socketInstance.emit('room:join', {
+    roomId: roomId.value,
+    ttlMinutes: roomTtlMinutes.value,
+    hostToken: hostToken.value,
+    deviceType: getDeviceType(),
+    deviceLocation: getDeviceLocation(),
+  }, (response) => {
+    if (!response?.ok) {
+      handleRoomJoinFailure(response?.error || '无法加入当前房间');
+      return;
+    }
+    if (response.role) {
+      role.value = response.role === 'host' ? 'host' : 'guest';
+      isHost.value = role.value === 'host';
+    }
+    replaceInitialClips(response.clips || []);
+    syncRoomMeta(response.room);
+    syncRoomConfig(response.config);
+    syncOnlineDevices({ devices: response.devices || [] });
+  });
+}
+
+function handleRoomJoinFailure(message) {
+  const errorMessage = String(message || '无法加入当前房间');
+  if (errorMessage === 'ROOM_NOT_FOUND' || errorMessage.includes('房间不存在')) {
+    const requestedSession = isHost.value || role.value === 'host'
+      ? { roomId: roomId.value, intent: 'create', forceGuest: false }
+      : { roomId: roomId.value, intent: 'join', forceGuest: true };
+    disconnectSocket();
+    socketState.value = 'reconnecting';
+    showToast('info', '正在恢复房间', isHost.value ? '房间服务已重启，正在恢复房主身份。' : '正在等待原房主重新上线。');
+    if (requestedSession.intent === 'create') {
+      void requestRoomSession(roomId.value, 'create', { forceGuest: false })
+        .then(() => {
+          connectSocket();
+          return refreshQr();
+        })
+        .catch(() => {
+          scheduleRoomSessionRetry(roomId.value, requestedSession, roomSessionRequestId);
+        });
+    } else {
+      scheduleRoomSessionRetry(roomId.value, requestedSession, roomSessionRequestId);
+    }
+    return;
+  }
+  showToast('error', '加入房间失败', errorMessage);
+}
+
 function connectSocket() {
   disconnectSocket();
   if (!roomId.value) return;
@@ -777,6 +1018,8 @@ function connectSocket() {
       roomId: roomId.value,
       clientId: selfClientId,
       hostToken: hostToken.value,
+      deviceType: getDeviceType(),
+      deviceLocation: getDeviceLocation(),
     },
     path: '/socket.io',
     transports: ['websocket', 'polling'],
@@ -788,19 +1031,7 @@ function connectSocket() {
 
   socketInstance.on('connect', () => {
     socketState.value = 'connected';
-    socketInstance.emit('room:join', {
-      roomId: roomId.value,
-      ttlMinutes: roomTtlMinutes.value,
-      hostToken: hostToken.value,
-    }, (response) => {
-      if (response?.ok) {
-        if (response.role) isHost.value = response.role === 'host';
-        replaceInitialClips(response.clips || []);
-        syncRoomMeta(response.room);
-        syncRoomConfig(response.config);
-        showToast('success', '已进入房间', '房间历史内容已同步。');
-      }
-    });
+    joinSocketRoom();
   });
 
   socketInstance.on('disconnect', () => {
@@ -813,11 +1044,7 @@ function connectSocket() {
 
   socketInstance.io.on('reconnect', () => {
     socketState.value = 'connected';
-    socketInstance.emit('room:join', {
-      roomId: roomId.value,
-      ttlMinutes: roomTtlMinutes.value,
-      hostToken: hostToken.value,
-    });
+    joinSocketRoom();
     showToast('success', '连接已恢复', '房间已自动重新加入。');
   });
 
@@ -829,10 +1056,28 @@ function connectSocket() {
   socketInstance.on('clip:init', (payload) => {
     replaceInitialClips(payload?.clips || []);
     syncRoomMeta(payload?.room);
+    syncOnlineDevices(payload);
+  });
+
+  socketInstance.on('SYNC_HISTORY_STATE', (payload) => {
+    replaceInitialClips(payload?.list || []);
+    syncRoomMeta(payload?.room);
   });
 
   socketInstance.on('ROOM_CONFIG_SYNC', (payload) => {
     syncRoomConfig(payload);
+  });
+
+  socketInstance.on('ONLINE_DEVICES_CHANGE', (payload) => {
+    syncOnlineDevices(payload);
+  });
+
+  socketInstance.on('HOST_DISCONNECTED', (payload) => {
+    handleHostDisconnected(payload);
+  });
+
+  socketInstance.on('KICK_DEVICE', (payload) => {
+    handleKickSignal(payload);
   });
 
   socketInstance.on('clip:sync', (payload) => {
@@ -852,6 +1097,7 @@ function connectSocket() {
   });
 
   socketInstance.on('room:cleared', (payload) => {
+    releaseLocalPreviewUrls(clips.value);
     clips.value = [];
     syncRoomMeta(payload?.room);
     showToast('success', '房间已清空', payload?.reason === 'expired' ? '因长时间无活动自动销毁。' : '房间已手动清空。');
@@ -859,11 +1105,185 @@ function connectSocket() {
 }
 
 function disconnectSocket() {
-  if (socketInstance) {
-    socketInstance.removeAllListeners();
-    socketInstance.disconnect();
-    socketInstance = null;
+  const activeSocket = socketInstance;
+  socketInstance = null;
+  if (!activeSocket) return;
+  activeSocket.removeAllListeners();
+  activeSocket.disconnect();
+}
+
+function releaseLocalPreviewUrls(items) {
+  for (const item of items || []) {
+    if (item?.localPreviewUrl) {
+      URL.revokeObjectURL(item.localPreviewUrl);
+    }
   }
+}
+
+function clearRoomResetTimer() {
+  if (roomResetTimer) {
+    window.clearInterval(roomResetTimer);
+    roomResetTimer = null;
+  }
+}
+
+function cleanupCurrentRoomConnections({ clearRoomData = true, clearResetTimer = true } = {}) {
+  clearRoomSessionRetry();
+  if (clearResetTimer) clearRoomResetTimer();
+  if (ticker) {
+    window.clearInterval(ticker);
+    ticker = null;
+  }
+  if (qrStamp) {
+    window.clearTimeout(qrStamp);
+    qrStamp = 0;
+  }
+  if (incomingFrameId) {
+    window.cancelAnimationFrame(incomingFrameId);
+    incomingFrameId = 0;
+  }
+  pendingIncomingClips.clear();
+  seenMsgIds.clear();
+  pendingTextMessages.clear();
+  for (const reader of uploadReaders.values()) {
+    if (reader.readyState === FileReader.LOADING) reader.abort();
+  }
+  for (const request of uploadRequests.values()) {
+    request.abort();
+  }
+  for (const timer of uploadRetryTimers.values()) {
+    window.clearTimeout(timer);
+  }
+  uploadReaders.clear();
+  uploadRequests.clear();
+  uploadRetryTimers.clear();
+  preparingUploads.clear();
+  cancelledUploads.clear();
+  disconnectSocket();
+  onlineDevices.value = [];
+  if (clearRoomData) {
+    releaseLocalPreviewUrls(clips.value);
+    clips.value = [];
+    textDraft.value = '';
+    qrCodeDataUrl.value = '';
+  }
+}
+
+function openJoinRoomModal() {
+  joinRoomDraft.value = '';
+  joinRoomOpen.value = true;
+}
+
+function closeJoinRoomModal() {
+  if (!joiningRoom.value) joinRoomOpen.value = false;
+}
+
+async function submitJoinRoom() {
+  const targetRoomId = normalizeRoomId(joinRoomDraft.value);
+  if (!targetRoomId) {
+    showToast('error', '房间码无效', '请输入至少 4 位房间码。');
+    return;
+  }
+  if (targetRoomId === roomId.value) {
+    closeJoinRoomModal();
+    return;
+  }
+  joiningRoom.value = true;
+  cleanupCurrentRoomConnections();
+  isHost.value = false;
+  role.value = 'guest';
+  hostToken.value = '';
+  isRoomDestroyed.value = false;
+  isInputDisabled.value = false;
+  pendingRoomNavigation = { roomId: targetRoomId, intent: 'join', forceGuest: true };
+  joinRoomOpen.value = false;
+  try {
+    await router.replace({ name: 'RealtimeClipboard', params: { roomId: targetRoomId } });
+  } catch (error) {
+    pendingRoomNavigation = null;
+    showToast('error', '切换失败', error?.message || '无法切换房间。');
+  } finally {
+    joiningRoom.value = false;
+  }
+}
+
+async function startIndependentHostRoom() {
+  cleanupCurrentRoomConnections();
+  roomLockOpen.value = false;
+  isRoomDestroyed.value = false;
+  isInputDisabled.value = false;
+  roomResetCountdown.value = 5;
+  isHost.value = false;
+  role.value = 'guest';
+  hostToken.value = '';
+  const nextRoomId = generateRoomId();
+  pendingRoomNavigation = { roomId: nextRoomId, intent: 'create', forceGuest: false };
+  try {
+    await router.replace({ name: 'RealtimeClipboard', params: { roomId: nextRoomId } });
+  } catch (error) {
+    pendingRoomNavigation = null;
+    showToast('error', '新房间创建失败', error?.message || '无法创建独立 Host 房间。');
+  }
+}
+
+function startRoomResetCountdown(reason, { openLock = false } = {}) {
+  clearRoomResetTimer();
+  cleanupCurrentRoomConnections({ clearRoomData: true, clearResetTimer: false });
+  isRoomDestroyed.value = true;
+  isInputDisabled.value = true;
+  roomResetReason.value = reason;
+  roomResetCountdown.value = 5;
+  roomLockOpen.value = openLock;
+  roomResetTimer = window.setInterval(() => {
+    roomResetCountdown.value -= 1;
+    if (roomResetCountdown.value > 0) return;
+    clearRoomResetTimer();
+    void startIndependentHostRoom();
+  }, 1000);
+}
+
+function handleHostDisconnected(payload = {}) {
+  if (isHost.value || role.value === 'host') return;
+  startRoomResetCountdown(payload.reason || 'Host 已退出，房间已被销毁');
+  showToast('error', '房间已销毁', '当前 Host 已退出，5 秒后将自动创建独立房间。');
+}
+
+function handleKickSignal(payload = {}) {
+  const targetClientId = String(payload.targetClientId || payload.clientId || '');
+  if (targetClientId && targetClientId !== selfClientId) return;
+  startRoomResetCountdown('您已被房主移出房间', { openLock: true });
+  showToast('error', '已被移出房间', '5 秒后将自动创建您的独立 Host 房间。');
+}
+
+function kickDevice(device) {
+  if (!isHost.value || !socketInstance || !device?.id) return;
+  socketInstance.emit('room:kick-device', {
+    roomId: roomId.value,
+    hostToken: hostToken.value,
+    targetDeviceId: device.clientId || device.id,
+  }, (response) => {
+    if (!response?.ok) {
+      showToast('error', '踢出失败', response?.error || '无法移除该设备。');
+      return;
+    }
+    syncOnlineDevices({ devices: response.devices || [] });
+    showToast('success', '设备已移除', '目标设备已断开房间连接。');
+  });
+}
+
+function destroyRoomAndExit() {
+  if (!isHost.value || !socketInstance) return;
+  socketInstance.emit('room:destroy', {
+    roomId: roomId.value,
+    hostToken: hostToken.value,
+  }, (response) => {
+    if (!response?.ok) {
+      showToast('error', '销毁失败', response?.error || '无法销毁当前房间。');
+      return;
+    }
+    showToast('success', '房间已销毁', '正在为本机创建新的独立房间。');
+    void startIndependentHostRoom();
+  });
 }
 
 function syncRoomSettings() {
@@ -883,26 +1303,15 @@ function syncRoomSettings() {
   });
 }
 
-function scheduleTextSend() {
-  if (textTimer) window.clearTimeout(textTimer);
-  textTimer = null;
-  if (!textDraft.value.trim()) return;
-  textTimer = window.setTimeout(() => {
-    textTimer = null;
-    if (textDraft.value.trim()) sendTextNow();
-  }, 900);
-}
-
 function clearTextDraft() {
-  if (textTimer) window.clearTimeout(textTimer);
-  textTimer = null;
   textDraft.value = '';
-  lastSentText = '';
 }
 
 function sendTextNow() {
-  if (textTimer) window.clearTimeout(textTimer);
-  textTimer = null;
+  if (isInputDisabled.value || isRoomDestroyed.value) {
+    showToast('error', '房间已锁定', '当前房间已销毁，暂时不能发送内容。');
+    return;
+  }
   const text = textDraft.value.trim();
   if (!text) {
     showToast('error', '内容为空', '请输入一点文本再同步。');
@@ -912,7 +1321,7 @@ function sendTextNow() {
     showToast('error', '尚未连接', '请等待房间连接成功后再同步。');
     return;
   }
-  if (text === lastSentText || Array.from(pendingTextMessages.values()).includes(text)) return;
+  if (Array.from(pendingTextMessages.values()).includes(text)) return;
 
   const msgId = createMessageId();
   pendingTextMessages.set(msgId, text);
@@ -926,14 +1335,106 @@ function sendTextNow() {
   }, (response) => {
     pendingTextMessages.delete(msgId);
     if (!response?.ok) {
-      if (textDraft.value.trim() === text) lastSentText = '';
       showToast('error', '同步失败', response?.error || '文本发送失败');
       return;
     }
     if (response.room) syncRoomMeta(response.room);
-    lastSentText = text;
     if (textDraft.value.trim() === text) textDraft.value = '';
   });
+}
+
+function isCompressibleImage(file) {
+  const mimeType = String(file?.type || '').toLowerCase();
+  const fileName = String(file?.name || '').toLowerCase();
+  return mimeType === 'image/jpeg'
+    || mimeType === 'image/jpg'
+    || mimeType === 'image/png'
+    || /\.(jpe?g|png)$/.test(fileName);
+}
+
+function replaceFileExtension(fileName, extension) {
+  const sourceName = String(fileName || 'image');
+  const baseName = sourceName.replace(/\.[^.]+$/, '') || 'image';
+  return `${baseName}.${extension}`;
+}
+
+function loadImageForCompression(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('图片解码失败'));
+    };
+    image.src = objectUrl;
+  });
+}
+
+function canvasToBlob(canvas, mimeType, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+        return;
+      }
+      reject(new Error('图片压缩失败'));
+    }, mimeType, quality);
+  });
+}
+
+async function prepareImageForUpload(file, msgId) {
+  const mimeType = String(file?.type || '').toLowerCase();
+  if (!mimeType.startsWith('image/') || file.size <= imageCompressionThreshold || !isCompressibleImage(file)) {
+    return file;
+  }
+
+  updateUploadCard(msgId, { transferProgress: 5 });
+  const image = await loadImageForCompression(file);
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) {
+    updateUploadCard(msgId, { transferProgress: 0 });
+    return file;
+  }
+
+  updateUploadCard(msgId, { transferProgress: 18 });
+  const scale = Math.min(1, imageCompressionMaxEdge / Math.max(sourceWidth, sourceHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+  const context = canvas.getContext('2d');
+  if (!context) {
+    updateUploadCard(msgId, { transferProgress: 0 });
+    return file;
+  }
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const outputType = mimeType === 'image/png' ? 'image/webp' : 'image/jpeg';
+  const outputExtension = outputType === 'image/webp' ? 'webp' : 'jpg';
+  const blob = await canvasToBlob(canvas, outputType, imageCompressionQuality);
+  if (!blob || blob.size >= file.size) {
+    updateUploadCard(msgId, { transferProgress: 0 });
+    return file;
+  }
+
+  const compressedFile = new File([blob], replaceFileExtension(file.name, outputExtension), {
+    type: outputType,
+    lastModified: file.lastModified || Date.now(),
+  });
+  const previousClip = clips.value.find((clip) => clip.msgId === msgId);
+  if (previousClip?.localPreviewUrl) URL.revokeObjectURL(previousClip.localPreviewUrl);
+  updateUploadCard(msgId, {
+    fileName: compressedFile.name,
+    mimeType: compressedFile.type,
+    size: compressedFile.size,
+    localPreviewUrl: URL.createObjectURL(compressedFile),
+    transferProgress: 45,
+  });
+  return compressedFile;
 }
 
 function readFileAsDataUrl(file, onProgress, msgId) {
@@ -961,7 +1462,7 @@ function readFileAsDataUrl(file, onProgress, msgId) {
   });
 }
 
-function uploadFileWithProgress(file, msgId) {
+function uploadFileWithProgress(file, msgId, attempt = 0, progressStart = 0) {
   return new Promise((resolve, reject) => {
     const formData = new FormData();
     formData.append('roomId', roomId.value);
@@ -973,21 +1474,39 @@ function uploadFileWithProgress(file, msgId) {
     const request = new XMLHttpRequest();
     uploadRequests.set(msgId, request);
     request.open('POST', apiConfig.baseURL + apiConfig.endpoints.clipboardUpload);
+    request.timeout = uploadTimeoutMs;
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) {
-        updateUploadCard(msgId, { transferProgress: Math.min(95, Math.round((event.loaded / event.total) * 95)) });
+        const progress = progressStart + Math.round((event.loaded / event.total) * (95 - progressStart));
+        updateUploadCard(msgId, { transferProgress: Math.min(95, progress) });
       }
     };
-    request.onerror = () => {
+    const cleanupRequest = () => {
       uploadRequests.delete(msgId);
-      reject(new Error('上传连接失败'));
     };
+    const retryOrReject = (error) => {
+      cleanupRequest();
+      if (attempt < maxUploadRetries && !cancelledUploads.has(msgId)) {
+        updateUploadCard(msgId, {
+          transferProgress: Math.min(95, Math.max(progressStart, 10 + attempt * 5)),
+        });
+        const retryTimer = window.setTimeout(() => {
+          uploadRetryTimers.delete(msgId);
+          uploadFileWithProgress(file, msgId, attempt + 1, progressStart).then(resolve, reject);
+        }, 700 * (attempt + 1));
+        uploadRetryTimers.set(msgId, retryTimer);
+        return;
+      }
+      reject(error);
+    };
+    request.onerror = () => retryOrReject(new Error('上传连接失败，正在重试'));
+    request.ontimeout = () => retryOrReject(new Error('上传超时，正在重试'));
     request.onabort = () => {
-      uploadRequests.delete(msgId);
+      cleanupRequest();
       reject(new Error('已取消传输'));
     };
     request.onload = () => {
-      uploadRequests.delete(msgId);
+      cleanupRequest();
       let responseData = {};
       try {
         responseData = JSON.parse(request.responseText || '{}');
@@ -995,20 +1514,34 @@ function uploadFileWithProgress(file, msgId) {
         responseData = {};
       }
       if (request.status < 200 || request.status >= 300) {
-        reject(new Error(responseData.message || responseData.error || `上传失败（HTTP ${request.status}）`));
+        const error = new Error(responseData.message || responseData.error || `上传失败（HTTP ${request.status}）`);
+        if (request.status >= 500) {
+          retryOrReject(error);
+          return;
+        }
+        reject(error);
         return;
       }
       resolve(responseData);
     };
-    request.send(formData);
+    try {
+      request.send(formData);
+    } catch (error) {
+      retryOrReject(error);
+    }
   });
 }
 
 function cancelUpload(msgId) {
   cancelledUploads.add(msgId);
+  const retryTimer = uploadRetryTimers.get(msgId);
+  if (retryTimer) {
+    window.clearTimeout(retryTimer);
+    uploadRetryTimers.delete(msgId);
+  }
   uploadReaders.get(msgId)?.abort();
   uploadRequests.get(msgId)?.abort();
-  if (!uploadReaders.has(msgId) && !uploadRequests.has(msgId)) {
+  if (!uploadReaders.has(msgId) && !uploadRequests.has(msgId) && !uploadRetryTimers.has(msgId) && !preparingUploads.has(msgId)) {
     markUploadFailed(msgId, new Error('已取消传输'));
   }
 }
@@ -1019,14 +1552,23 @@ async function uploadAndSendFile(file) {
     throw new Error(`${file.name} 超过 50MB 单文件限制`);
   }
   const msgId = createUploadCard(file);
+  preparingUploads.add(msgId);
 
   try {
     if (!socketInstance) {
       throw new Error('尚未连接到房间，请稍后重试');
     }
+    const preparedFile = await prepareImageForUpload(file, msgId);
+    preparingUploads.delete(msgId);
+    if (cancelledUploads.has(msgId)) throw new Error('已取消传输');
+    const wasCompressed = preparedFile !== file;
     let response;
-    if (file.type.startsWith('image/') && file.size <= inlineImageThreshold) {
-      const dataUrl = await readFileAsDataUrl(file, (progress) => updateUploadCard(msgId, { transferProgress: progress }), msgId);
+    if (preparedFile.type.startsWith('image/') && preparedFile.size <= inlineImageThreshold) {
+      const readProgressStart = wasCompressed ? 45 : 0;
+      const readProgressSpan = 90 - readProgressStart;
+      const dataUrl = await readFileAsDataUrl(preparedFile, (progress) => updateUploadCard(msgId, {
+        transferProgress: Math.min(90, readProgressStart + Math.round((progress / 90) * readProgressSpan)),
+      }), msgId);
       if (cancelledUploads.has(msgId)) throw new Error('已取消传输');
       response = await new Promise((resolve, reject) => {
         socketInstance?.emit('clip:send', {
@@ -1035,9 +1577,9 @@ async function uploadAndSendFile(file) {
           clientId: selfClientId,
           kind: 'image',
           dataUrl,
-          fileName: file.name,
-          mimeType: file.type,
-          size: file.size,
+          fileName: preparedFile.name,
+          mimeType: preparedFile.type,
+          size: preparedFile.size,
           ttlMinutes: roomTtlMinutes.value,
         }, (acknowledgement) => {
           if (!acknowledgement?.ok) {
@@ -1048,7 +1590,7 @@ async function uploadAndSendFile(file) {
         });
       });
     } else {
-      const uploadData = await uploadFileWithProgress(file, msgId);
+      const uploadData = await uploadFileWithProgress(preparedFile, msgId, 0, wasCompressed ? 45 : 0);
       if (cancelledUploads.has(msgId)) throw new Error('已取消传输');
       updateUploadCard(msgId, { transferProgress: 97 });
       response = await new Promise((resolve, reject) => {
@@ -1074,6 +1616,7 @@ async function uploadAndSendFile(file) {
       updateUploadCard(msgId, { transferProgress: 99 });
     }
   } catch (error) {
+    preparingUploads.delete(msgId);
     markUploadFailed(msgId, error);
     throw error;
   }
@@ -1124,7 +1667,7 @@ function handleTextPaste(event) {
   if (text) {
     event.preventDefault();
     textDraft.value = text;
-    sendTextNow();
+    showToast('info', '已粘贴到草稿', '点击“立即同步”后才会发送。');
   }
 }
 
@@ -1145,7 +1688,7 @@ function handleGlobalPaste(event) {
   if (text) {
     event.preventDefault();
     textDraft.value = text;
-    sendTextNow();
+    showToast('info', '已粘贴到草稿', '点击“立即同步”后才会发送。');
   }
 }
 
@@ -1368,31 +1911,73 @@ function resetShareOrigin() {
   window.localStorage.removeItem(SHARE_ORIGIN_STORAGE_KEY);
 }
 
+function scheduleRoomSessionRetry(nextRoomId, requestedSession, requestId) {
+  clearRoomSessionRetry();
+  roomRetryTimer = window.setTimeout(async () => {
+    roomRetryTimer = null;
+    if (requestId !== roomSessionRequestId || roomId.value !== nextRoomId) return;
+    try {
+      await requestRoomSession(nextRoomId, requestedSession.intent, {
+        forceGuest: requestedSession.forceGuest,
+      });
+      connectSocket();
+      await refreshQr();
+    } catch (error) {
+      socketState.value = 'reconnecting';
+      scheduleRoomSessionRetry(nextRoomId, requestedSession, requestId);
+    }
+  }, 3000);
+}
+
 let roomSessionRequestId = 0;
 
 watch(() => route.params.roomId, async (value) => {
   const requestId = ++roomSessionRequestId;
   const normalized = normalizeRoomId(value);
   if (!normalized) {
-    const generatedRoomId = generateRoomId();
-    try {
-      await requestRoomSession(generatedRoomId, 'create');
-    } catch (error) {
-      isHost.value = false;
-      hostToken.value = '';
-      showToast('error', '房间创建未确认', error?.message || '请检查后端服务是否正常。');
-    }
-    if (requestId !== roomSessionRequestId) return;
-    await router.replace({ name: 'RealtimeClipboard', params: { roomId: generatedRoomId } });
+    const persisted = readPersistedRoomState();
+    const restoredRoomId = normalizeRoomId(persisted?.roomId);
+    const restoredHost = persisted?.role === 'host' && Boolean(readHostToken(restoredRoomId));
+    const nextRoomId = restoredRoomId || generateRoomId();
+    pendingRoomNavigation = {
+      roomId: nextRoomId,
+      intent: restoredHost ? 'create' : restoredRoomId ? 'join' : 'create',
+      forceGuest: restoredHost ? false : Boolean(restoredRoomId),
+    };
+    await router.replace({ name: 'RealtimeClipboard', params: { roomId: nextRoomId } });
     return;
   }
 
+  const persisted = readPersistedRoomState();
+  const hasSavedHostToken = Boolean(readHostToken(normalized));
+  const requestedSession = pendingRoomNavigation?.roomId === normalized
+    ? pendingRoomNavigation
+    : {
+      roomId: normalized,
+      intent: hasSavedHostToken ? 'create' : 'join',
+      forceGuest: false,
+    };
+  pendingRoomNavigation = null;
+  clearRoomSessionRetry();
   try {
-    await requestRoomSession(normalized, 'join');
+    await requestRoomSession(normalized, requestedSession.intent, { forceGuest: requestedSession.forceGuest });
   } catch (error) {
+    roomId.value = normalized;
     isHost.value = false;
+    role.value = 'guest';
     hostToken.value = '';
-    showToast('error', '房间身份确认失败', error?.message || '请检查后端服务是否正常。');
+    if (requestId === roomSessionRequestId) {
+      cleanupCurrentRoomConnections();
+      socketState.value = 'offline';
+      if (requestedSession.intent === 'join' || error?.message === 'Failed to fetch') {
+        socketState.value = 'reconnecting';
+        showToast('info', '正在恢复房间', '信令服务暂时没有房间数据，系统会自动重试连接。');
+        scheduleRoomSessionRetry(normalized, requestedSession, requestId);
+      } else {
+        showToast('error', '房间身份确认失败', error?.message || '请检查后端服务是否正常。');
+      }
+    }
+    return;
   }
   if (requestId !== roomSessionRequestId) return;
   connectSocket();
@@ -1407,10 +1992,6 @@ watch(shareOriginDraft, (value) => {
   window.localStorage.setItem(SHARE_ORIGIN_STORAGE_KEY, String(value || '').trim());
 });
 
-watch(textDraft, () => {
-  if (!textDraft.value.trim()) lastSentText = '';
-});
-
 onMounted(() => {
   const savedShareOrigin = window.localStorage.getItem(SHARE_ORIGIN_STORAGE_KEY);
   if (savedShareOrigin) {
@@ -1420,32 +2001,42 @@ onMounted(() => {
   visibilityHandler = () => {
     showToast('success', document.visibilityState === 'visible' ? '页面已回到前台' : '页面已转入后台', document.visibilityState === 'visible' ? '连接状态会自动重连保持。' : '继续后台运行，回到页面即可恢复可见状态。');
   };
+  beforeUnloadHandler = () => {
+    if (isHost.value && socketInstance && !isRoomDestroyed.value) {
+      const payload = {
+        roomId: roomId.value,
+        clientId: selfClientId,
+        event: 'room:destroy',
+        payload: {
+          roomId: roomId.value,
+          hostToken: hostToken.value,
+        },
+      };
+      try {
+        navigator.sendBeacon?.(
+          apiConfig.baseURL + '/clipboard/event',
+          new Blob([JSON.stringify(payload)], { type: 'application/json' }),
+        );
+      } catch {
+        socketInstance.emit('room:destroy', {
+          roomId: roomId.value,
+          hostToken: hostToken.value,
+        });
+      }
+    }
+  };
   window.addEventListener('paste', handleGlobalPaste);
+  window.addEventListener('beforeunload', beforeUnloadHandler);
   document.addEventListener('visibilitychange', visibilityHandler);
 });
 
 onBeforeUnmount(() => {
-  if (textTimer) window.clearTimeout(textTimer);
-  if (ticker) window.clearInterval(ticker);
-  if (qrStamp) window.clearTimeout(qrStamp);
-  if (incomingFrameId) window.cancelAnimationFrame(incomingFrameId);
-  incomingFrameId = 0;
-  pendingIncomingClips.clear();
-  seenMsgIds.clear();
-  pendingTextMessages.clear();
-  uploadReaders.forEach((reader) => {
-    if (reader.readyState === FileReader.LOADING) reader.abort();
-  });
-  uploadRequests.forEach((request) => request.abort());
-  uploadReaders.clear();
-  uploadRequests.clear();
-  cancelledUploads.clear();
+  cleanupCurrentRoomConnections();
+  if (beforeUnloadHandler) window.removeEventListener('beforeunload', beforeUnloadHandler);
   window.removeEventListener('paste', handleGlobalPaste);
   if (visibilityHandler) document.removeEventListener('visibilitychange', visibilityHandler);
-  disconnectSocket();
-  clips.value.forEach((clip) => {
-    if (clip.localPreviewUrl) URL.revokeObjectURL(clip.localPreviewUrl);
-  });
+  for (const timerId of toastTimers.values()) window.clearTimeout(timerId);
+  toastTimers.clear();
 });
 </script>
 

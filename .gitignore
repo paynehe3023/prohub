@@ -7,3 +7,6 @@ build/
 _update_notifier-last-checked
 Umi-OCR/
 *.mov
+.env
+.env.*
+!.env.example

@@ -26,6 +26,12 @@ services:
       PORT: 3000
       REMBG_URL: http://rembg:7000
       REMBG_MODEL: u2netp
+      SMTP_HOST: ${SMTP_HOST:-smtp.qq.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      FEEDBACK_FROM: ${FEEDBACK_FROM:-}
     volumes:
       - ./server:/app/server
       - prohub_server_node_modules:/app/server/node_modules

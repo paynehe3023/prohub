@@ -1,6 +1,7 @@
 <template>
-  <div class="min-h-screen py-8 px-4">
+  <div class="theme-page min-h-dvh py-8 px-4">
     <div class="max-w-4xl mx-auto">
+      <BackButton class="mb-5" />
       <!-- Header -->
       <div class="text-center mb-8">
         <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white mb-4 shadow-lg shadow-blue-500/20">
@@ -187,6 +188,7 @@
 <script setup>
 import { apiConfig } from '../../config/api';
 import { ref, computed, watch } from 'vue';
+import BackButton from '../../components/BackButton.vue';
 import {
   IconUpload, IconPhoto, IconPhotoShield, IconCheck, IconPalette,
   IconEye, IconDownload, IconRefresh, IconAlertCircle, IconSparkles,

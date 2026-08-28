@@ -70,6 +70,81 @@ function normalizeClientId(value) {
   return candidate.replace(/[^a-zA-Z0-9._:-]/g, '');
 }
 
+function extractIpv4(value) {
+  const candidate = String(value || '').split(',')[0].trim().replace(/^\[|\]$/g, '');
+  const normalized = candidate.replace(/^::ffff:/i, '');
+  const match = normalized.match(/(?:^|[^0-9])((?:\d{1,3}\.){3}\d{1,3})(?:$|[^0-9])/);
+  if (!match) return '';
+  const octets = match[1].split('.').map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return '';
+  if (octets[0] === 127 || octets.every((octet) => octet === 0)) return '';
+  return match[1];
+}
+
+function getRequestIpv4(req) {
+  return extractIpv4(req.headers['x-forwarded-for'])
+    || extractIpv4(req.socket?.remoteAddress)
+    || '未知 IPv4';
+}
+
+function getSocketIpv4(socket) {
+  return extractIpv4(socket.handshake.headers['x-forwarded-for'])
+    || extractIpv4(socket.handshake.address)
+    || '未知 IPv4';
+}
+
+const ipLocationCache = new Map();
+
+function isPrivateIpv4(ip) {
+  const octets = String(ip || '').split('.').map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet))) return true;
+  return octets[0] === 10
+    || octets[0] === 127
+    || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+    || (octets[0] === 192 && octets[1] === 168)
+    || (octets[0] === 169 && octets[1] === 254);
+}
+
+async function lookupIpv4Location(ip, fallback = '未知地区') {
+  const normalizedIp = extractIpv4(ip);
+  if (!normalizedIp) return fallback;
+  if (isPrivateIpv4(normalizedIp)) return '局域网';
+  if (ipLocationCache.has(normalizedIp)) return ipLocationCache.get(normalizedIp);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+  timeout.unref?.();
+  try {
+    const response = await fetch(`https://ipapi.co/${encodeURIComponent(normalizedIp)}/json/`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    const location = [data.city, data.region]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' ');
+    const resolved = location || '未知地区';
+    ipLocationCache.set(normalizedIp, resolved);
+    return resolved;
+  } catch {
+    return fallback;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function enrichDeviceLocation(room, connectionId, ip, fallback) {
+  const device = room?.devices.get(connectionId);
+  if (!device) return;
+  const location = await lookupIpv4Location(ip, fallback);
+  const currentRoom = rooms.get(room.roomId);
+  const currentDevice = currentRoom?.devices.get(connectionId);
+  if (!currentRoom || !currentDevice) return;
+  currentDevice.location = location;
+  broadcastOnlineDevices(currentRoom);
+}
+
 function normalizeMessageId(value) {
   const candidate = String(value || '').trim();
   if (!candidate || candidate.length > 120) return '';
@@ -100,9 +175,28 @@ function clipSummary(room) {
     expiresAt: room.expiresAt,
     lastActivityAt: room.lastActivityAt,
     clipCount: room.clips.length,
-    clientCount: room.clients.size + room.socketClients.size,
+    clientCount: room.devices.size || room.clients.size + room.socketClients.size,
     maxClips: MAX_CLIPS,
   };
+}
+
+function buildOnlineDevices(room) {
+  return Array.from(room.devices.values()).map((device) => ({
+    id: device.connectionId,
+    connectionId: device.connectionId,
+    clientId: device.clientId,
+    ip: device.ip || '未知 IP',
+    location: device.location || '未知地区',
+    deviceType: device.deviceType === 'Mobile' ? 'Mobile' : 'PC',
+    isHost: Boolean(device.isHost),
+  }));
+}
+
+function broadcastOnlineDevices(room) {
+  const payload = { devices: buildOnlineDevices(room) };
+  broadcastRoom(room, 'ONLINE_DEVICES_CHANGE', payload);
+  socketServer?.to(room.roomId).emit('ONLINE_DEVICES_CHANGE', payload);
+  return payload.devices;
 }
 
 function roomConfigPayload(room) {
@@ -150,6 +244,9 @@ function createRoom(roomId, ttlMinutes = DEFAULT_TTL_MINUTES) {
     assets: new Map(),
     clients: new Map(),
     socketClients: new Set(),
+    devices: new Map(),
+    hostConnectionId: null,
+    destroying: false,
     ttlMs,
     lastActivityAt: Date.now(),
     expiresAt: ttlMs === 0 ? null : Date.now() + ttlMs,
@@ -178,7 +275,7 @@ function touchRoom(room, ttlMinutes) {
   return room;
 }
 
-function addClient(room, clientId, res) {
+function addClient(room, clientId, res, metadata = {}) {
   const existing = room.clients.get(clientId);
   if (existing) {
     clearInterval(existing.keepAlive);
@@ -190,15 +287,46 @@ function addClient(room, clientId, res) {
   }, 25000);
   keepAlive.unref?.();
 
-  room.clients.set(clientId, { res, keepAlive });
-  res.on('close', () => removeClient(room, clientId));
+  room.clients.set(clientId, {
+    res,
+    keepAlive,
+    clientId: metadata.clientId || clientId,
+    ip: metadata.ip || '未知 IP',
+    location: metadata.location || '未知地区',
+    deviceType: metadata.deviceType === 'Mobile' ? 'Mobile' : 'PC',
+  });
+  res.on('close', () => removeClient(room, clientId, res));
 }
 
-function removeClient(room, clientId) {
+function removeClient(room, clientId, expectedRes = null) {
   const client = room.clients.get(clientId);
   if (!client) return;
+  if (expectedRes && client.res !== expectedRes) return;
   clearInterval(client.keepAlive);
   room.clients.delete(clientId);
+  const device = room.devices.get(clientId);
+  room.devices.delete(clientId);
+  if (device?.isHost && room.hostConnectionId === clientId) {
+    destroyRoom(room.roomId, 'Host 已退出，房间已被销毁');
+    return;
+  }
+  broadcastOnlineDevices(room);
+}
+
+function registerRoomDevice(room, connectionId, payload = {}, metadata = {}, isHost = false) {
+  const normalizedConnectionId = String(connectionId || '').trim();
+  if (!normalizedConnectionId) return null;
+  const device = {
+    connectionId: normalizedConnectionId,
+    clientId: normalizeClientId(payload.clientId) || normalizedConnectionId,
+    ip: String(metadata.ip || payload.ip || '未知 IP'),
+    location: String(payload.deviceLocation || metadata.location || '未知地区'),
+    deviceType: payload.deviceType === 'Mobile' || metadata.deviceType === 'Mobile' ? 'Mobile' : 'PC',
+    isHost: Boolean(isHost),
+  };
+  room.devices.set(normalizedConnectionId, device);
+  if (device.isHost) room.hostConnectionId = normalizedConnectionId;
+  return device;
 }
 
 function broadcastRoom(room, event, data, excludeClientId = null) {
@@ -227,8 +355,32 @@ function expireRoom(roomId, reason = 'expired') {
   closeRoomClients(room, payload);
   room.assets.clear();
   room.clips.length = 0;
+  room.devices.clear();
   room.socketClients.clear();
   rooms.delete(roomId);
+}
+
+function destroyRoom(roomId, reason = 'Host 已退出，房间已被销毁') {
+  const room = rooms.get(normalizeRoomId(roomId));
+  if (!room || room.destroying) return false;
+  room.destroying = true;
+  if (room.timer) clearTimeout(room.timer);
+  const payload = { roomId: room.roomId, reason, destroyedAt: Date.now() };
+  broadcastRoom(room, 'HOST_DISCONNECTED', payload);
+  socketServer?.to(room.roomId).emit('HOST_DISCONNECTED', payload);
+  broadcastRoom(room, 'room:cleared', { ...payload, clearedAt: payload.destroyedAt });
+  socketServer?.to(room.roomId).emit('room:cleared', { ...payload, clearedAt: payload.destroyedAt });
+  closeRoomClients(room, payload);
+  for (const connectionId of room.socketClients) {
+    const clientSocket = socketServer?.sockets.sockets.get(connectionId);
+    if (clientSocket) clientSocket.disconnect(true);
+  }
+  room.assets.clear();
+  room.clips.length = 0;
+  room.devices.clear();
+  room.socketClients.clear();
+  rooms.delete(room.roomId);
+  return true;
 }
 
 function clearRoom(roomId, reason = 'manual') {
@@ -339,14 +491,19 @@ function resolveClip(room, payload, msgId, clientId) {
   throw new Error('UNSUPPORTED_CLIP');
 }
 
-function handleJoin(room, payload) {
+function handleJoin(room, payload, connectionId = null, metadata = {}) {
   touchRoom(room);
+  const isHost = hasValidHostToken(room, payload?.hostToken);
+  if (connectionId) {
+    registerRoomDevice(room, connectionId, payload, metadata, isHost);
+  }
   return {
     ok: true,
-    role: hasValidHostToken(room, payload?.hostToken) ? 'host' : 'guest',
+    role: isHost ? 'host' : 'guest',
     room: clipSummary(room),
     config: roomConfigPayload(room),
     clips: room.clips,
+    devices: buildOnlineDevices(room),
   };
 }
 
@@ -359,7 +516,9 @@ function handleUpdateSettings(room, payload) {
   touchRoom(room, ttlMinutes);
   const roomState = clipSummary(room);
   broadcastRoom(room, 'room:settings', roomState);
-  return { ok: true, room: roomState, config: roomConfigPayload(room) };
+  const config = roomConfigPayload(room);
+  broadcastRoom(room, 'ROOM_CONFIG_SYNC', config);
+  return { ok: true, room: roomState, config };
 }
 
 function handleClipSend(room, payload, clientId) {
@@ -401,6 +560,9 @@ function handleRoomSession(payload) {
   let room = rooms.get(roomId);
   const created = !room;
 
+  if (!room && intent === 'join') {
+    throw new Error('ROOM_NOT_FOUND');
+  }
   if (!room) room = createRoom(roomId, ttlMinutes);
   else touchRoom(room);
 
@@ -446,18 +608,35 @@ function registerClipboardRealtime(app, httpServer) {
           const roomId = normalizeRoomId(payload.roomId);
           if (socket.data.roomId && socket.data.roomId !== roomId) {
             const previousRoom = rooms.get(socket.data.roomId);
-            previousRoom?.socketClients.delete(socket.id);
+            const previousDevice = previousRoom?.devices.get(socket.id);
+            if (previousDevice?.isHost && previousRoom?.hostConnectionId === socket.id) {
+              destroyRoom(previousRoom.roomId, 'Host 已退出，房间已被销毁');
+            } else if (previousRoom) {
+              previousRoom.socketClients.delete(socket.id);
+              previousRoom.devices.delete(socket.id);
+              broadcastOnlineDevices(previousRoom);
+            }
             socket.leave(socket.data.roomId);
           }
 
-          const room = ensureRoom(roomId);
-          socket.join(roomId);
-          room.socketClients.add(socket.id);
-          socket.data.roomId = roomId;
-          socket.data.hostToken = String(payload.hostToken || '');
-          const result = handleJoin(room, payload);
-          socket.emit('clip:init', { room: result.room, clips: result.clips });
+          const room = rooms.get(roomId);
+          if (!room) throw new Error('ROOM_NOT_FOUND');
+      socket.join(roomId);
+      room.socketClients.add(socket.id);
+      socket.data.roomId = roomId;
+      socket.data.hostToken = String(payload.hostToken || '');
+      const socketIp = getSocketIpv4(socket);
+      const result = handleJoin(room, payload, socket.id, {
+            ip: socketIp,
+            location: payload.deviceLocation,
+            deviceType: payload.deviceType,
+          });
+          socket.data.role = result.role;
+          socket.emit('SYNC_HISTORY_STATE', { room: result.room, list: result.clips });
           socket.emit('ROOM_CONFIG_SYNC', result.config);
+          socket.emit('ONLINE_DEVICES_CHANGE', { devices: result.devices });
+          broadcastOnlineDevices(room);
+          void enrichDeviceLocation(room, socket.id, socketIp, payload.deviceLocation);
           if (typeof acknowledge === 'function') acknowledge(result);
         } catch (error) {
           if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
@@ -519,9 +698,69 @@ function registerClipboardRealtime(app, httpServer) {
         }
       });
 
+      socket.on('room:destroy', (payload = {}, acknowledge) => {
+        try {
+          const room = getSocketRoom(payload);
+          if (!hasValidHostToken(room, payload.hostToken || socket.data.hostToken)) {
+            throw new Error('HOST_AUTH_REQUIRED');
+          }
+          destroyRoom(room.roomId, 'Host 已退出，房间已被销毁');
+          if (typeof acknowledge === 'function') acknowledge({ ok: true });
+        } catch (error) {
+          if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
+        }
+      });
+
+      socket.on('room:kick-device', (payload = {}, acknowledge) => {
+        try {
+          const room = getSocketRoom(payload);
+          if (!hasValidHostToken(room, payload.hostToken || socket.data.hostToken)) {
+            throw new Error('HOST_AUTH_REQUIRED');
+          }
+          const targetId = String(payload.targetDeviceId || '');
+          const target = Array.from(room.devices.values()).find((device) => (
+            device.connectionId === targetId || device.clientId === targetId
+          ));
+          if (!target || target.connectionId === socket.id) throw new Error('DEVICE_NOT_FOUND');
+          const kickPayload = {
+            roomId: room.roomId,
+            targetClientId: target.clientId,
+            reason: '您已被房主移出房间',
+          };
+          const targetSocket = socketServer?.sockets.sockets.get(target.connectionId);
+          if (targetSocket) {
+            targetSocket.emit('KICK_DEVICE', kickPayload);
+          }
+          const targetSseClient = room.clients.get(target.connectionId);
+          if (targetSseClient && !targetSseClient.res.writableEnded) {
+            writeSse(targetSseClient.res, 'KICK_DEVICE', kickPayload);
+            targetSseClient.res.end();
+          }
+          if (room.clients.has(target.connectionId)) {
+            removeClient(room, target.connectionId);
+          } else {
+            room.devices.delete(target.connectionId);
+          }
+          room.socketClients.delete(target.connectionId);
+          broadcastOnlineDevices(room);
+          targetSocket?.disconnect(true);
+          if (typeof acknowledge === 'function') acknowledge({ ok: true, devices: buildOnlineDevices(room) });
+        } catch (error) {
+          if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
+        }
+      });
+
       socket.on('disconnect', () => {
         const room = rooms.get(socket.data.roomId);
-        room?.socketClients.delete(socket.id);
+        if (!room) return;
+        const device = room.devices.get(socket.id);
+        room.socketClients.delete(socket.id);
+        room.devices.delete(socket.id);
+        if (device?.isHost && room.hostConnectionId === socket.id) {
+          destroyRoom(room.roomId, 'Host 已退出，房间已被销毁');
+          return;
+        }
+        broadcastOnlineDevices(room);
       });
     });
   }
@@ -555,7 +794,10 @@ function registerClipboardRealtime(app, httpServer) {
       const roomId = normalizeRoomId(roomSource);
       const clientId = String(clientSource || crypto.randomUUID());
       const requestedTtl = req.query.ttlMinutes;
-      const room = ensureRoom(roomId, requestedTtl);
+      const room = rooms.get(roomId);
+      if (!room) {
+        return res.status(404).json({ error: '房间不存在或已销毁' });
+      }
       touchRoom(room);
 
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -565,8 +807,26 @@ function registerClipboardRealtime(app, httpServer) {
       res.flushHeaders?.();
       res.write('retry: 3000\n\n');
 
-      addClient(room, clientId, res);
+      const requestIp = getRequestIpv4(req);
+      addClient(room, clientId, res, {
+        ip: requestIp,
+        location: req.query.deviceLocation,
+        deviceType: req.query.deviceType,
+      });
+      const hostToken = String(req.query.hostToken || '');
+      registerRoomDevice(room, clientId, {
+        clientId,
+        hostToken,
+        deviceType: req.query.deviceType,
+        deviceLocation: req.query.deviceLocation,
+      }, {
+        ip: requestIp,
+        location: req.query.deviceLocation,
+        deviceType: req.query.deviceType,
+      }, hasValidHostToken(room, hostToken));
+      void enrichDeviceLocation(room, clientId, requestIp, req.query.deviceLocation);
       writeSse(res, 'connected', { room: clipSummary(room), clientId });
+      broadcastOnlineDevices(room);
     } catch (error) {
       console.error('[clipboard/stream] Error:', error.message);
       if (!res.headersSent) {
@@ -585,18 +845,43 @@ function registerClipboardRealtime(app, httpServer) {
       const event = String(body.event || '');
       const payload = body.payload || {};
       const requestedTtl = payload.ttlMinutes ?? body.ttlMinutes ?? DEFAULT_TTL_MINUTES;
-      const room = ensureRoom(roomId, requestedTtl);
+      const room = rooms.get(roomId);
+      if (!room) throw new Error('ROOM_NOT_FOUND');
 
       let result;
       switch (event) {
-        case 'room:join':
-          result = handleJoin(room, payload);
+        case 'room:join': {
+          const eventIp = getRequestIpv4(req);
+          result = handleJoin(room, payload, clientId, {
+            ip: eventIp,
+            location: payload.deviceLocation,
+            deviceType: payload.deviceType,
+          });
+          void enrichDeviceLocation(room, clientId, eventIp, payload.deviceLocation);
+          broadcastOnlineDevices(room);
+          if (room.clients.has(clientId)) {
+            writeSse(room.clients.get(clientId).res, 'SYNC_HISTORY_STATE', {
+              room: result.room,
+              list: result.clips,
+            });
+            writeSse(room.clients.get(clientId).res, 'ROOM_CONFIG_SYNC', result.config);
+          }
           break;
+        }
         case 'room:update-settings':
           result = handleUpdateSettings(room, payload);
           break;
         case 'clip:send':
           result = handleClipSend(room, payload, clientId);
+          if (result.ok && !result.duplicate) {
+            const senderClient = room.clients.get(clientId);
+            if (senderClient && !senderClient.res.writableEnded) {
+              writeSse(senderClient.res, 'clip:sync', {
+                room: result.room,
+                clip: result.clip,
+              });
+            }
+          }
           break;
         case 'clip:delete':
           result = handleClipDelete(room, payload);
@@ -604,6 +889,36 @@ function registerClipboardRealtime(app, httpServer) {
         case 'room:clear':
           result = handleRoomClear(room, payload);
           break;
+        case 'room:destroy':
+          if (!hasValidHostToken(room, payload?.hostToken)) throw new Error('HOST_AUTH_REQUIRED');
+          result = { ok: destroyRoom(room.roomId, 'Host 已退出，房间已被销毁') };
+          break;
+        case 'room:kick-device': {
+          if (!hasValidHostToken(room, payload?.hostToken)) throw new Error('HOST_AUTH_REQUIRED');
+          const targetId = String(payload?.targetDeviceId || '');
+          const target = Array.from(room.devices.values()).find((device) => (
+            device.connectionId === targetId || device.clientId === targetId
+          ));
+          if (!target || target.connectionId === clientId) throw new Error('DEVICE_NOT_FOUND');
+          const kickPayload = {
+            roomId: room.roomId,
+            targetClientId: target.clientId,
+            reason: '您已被房主移出房间',
+          };
+          const targetClient = room.clients.get(target.connectionId);
+          if (targetClient && !targetClient.res.writableEnded) {
+            writeSse(targetClient.res, 'KICK_DEVICE', kickPayload);
+            targetClient.res.end();
+          }
+          if (room.clients.has(target.connectionId)) {
+            removeClient(room, target.connectionId);
+          } else {
+            room.devices.delete(target.connectionId);
+          }
+          broadcastOnlineDevices(room);
+          result = { ok: true, devices: buildOnlineDevices(room) };
+          break;
+        }
         default:
           throw new Error('UNSUPPORTED_EVENT');
       }
@@ -629,7 +944,10 @@ function registerClipboardRealtime(app, httpServer) {
 
       const roomId = normalizeRoomId(roomSource);
       const requestedTtl = req.body?.ttlMinutes ?? req.query?.ttlMinutes;
-      const room = ensureRoom(roomId, requestedTtl);
+      const room = rooms.get(roomId);
+      if (!room) {
+        return res.status(404).json({ error: '房间不存在或已销毁' });
+      }
       touchRoom(room);
       const asset = storeAsset(room, file);
 

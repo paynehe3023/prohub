@@ -22,6 +22,7 @@ export const apiConfig = {
     clipboardUpload: '/clipboard/upload',
     clipboardHealth: '/clipboard/health',
     clipboardRoomSession: '/clipboard/room/session',
+    feedback: '/feedback',
   },
 };
 
