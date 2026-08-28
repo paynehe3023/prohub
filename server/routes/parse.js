@@ -699,13 +699,41 @@ function extractUrls(text) {
   });
 }
 
+function extractRequestText(body) {
+  if (typeof body === 'string') return body;
+  if (body && typeof body.url === 'string') return body.url;
+  return JSON.stringify(body || '');
+}
+
+function extractDouyinSharedCaption(text) {
+  if (!text) return '';
+
+  const source = String(text).replace(/\r\n?/g, '\n').trim();
+  const urlMatch = source.match(/https?:\/\/[^\s\u4e00-\u9fa5]+/i);
+  const beforeUrl = urlMatch ? source.slice(0, urlMatch.index) : source;
+  const captionParts = beforeUrl
+    .split(/\n\s*\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  let caption = captionParts[captionParts.length - 1] || '';
+
+  // 抖音分享文本通常在链接后附带“复制此链接...”和设备分享信息，
+  // 这些内容不是作品文案，不能混入前端展示。
+  caption = caption
+    .split(/复制此链接[，,]?\s*打开抖音搜索/i)[0]
+    .replace(/^\s*["'“”‘’\[\(【「『]+|[\s\[\(【「『]+$/g, '')
+    .trim();
+
+  return caption.slice(0, 200000);
+}
+
 // ==================== Express Router ====================
 const router = require('express').Router();
 
 router.post('/parse', async (req, res) => {
   try {
     // 核心修复：不管前端传的是什么（纯 URL 还是带文字），统一从这里提取纯链接
-    const bodyStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    const bodyStr = extractRequestText(req.body);
     const extracted = extractUrls(bodyStr);
     if (!extracted.length) {
       return res.status(400).json({
@@ -719,6 +747,7 @@ router.post('/parse', async (req, res) => {
 
     url = url.replace(/[.,;!?)〉》】〉》'"\uFF0C\u3001\u3002\uFF1B\uFF01\uFF1F\uFF09]+$/, '').trim();
     const platform = detectPlatform(url);
+    const sharedCaption = platform === 'douyin' ? extractDouyinSharedCaption(bodyStr) : '';
     console.log(`[Parse] ${url.slice(0, 100)} | Platform: ${platform}`);
 
     const { html, url: finalUrl } = await fetchPage(url, {
@@ -734,7 +763,7 @@ router.post('/parse', async (req, res) => {
         break;
       case 'douyin':
         // 抖音 Playwright 解析（绕过 WAF）
-        result = await parseDouyin(url);
+        result = await parseDouyin(url, sharedCaption);
         break;
       
             default:           result = parseGeneric(html);
@@ -760,6 +789,7 @@ router.post('/parse', async (req, res) => {
       cover: result.cover || '',
       video: result.video || '',
       images: result.images || [],
+      hasSharedCaption: Boolean(result.hasSharedCaption),
       // 保持向后兼容
       media: (result.media || []).slice(0, 20),
     });

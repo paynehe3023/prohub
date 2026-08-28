@@ -79,9 +79,9 @@
         <div class="flex items-start justify-between gap-3">
           <div class="flex-1 min-w-0">
             <p v-if="result.author" class="text-[0.8125rem] text-ios-blue font-medium mb-1 text-glass-sm">@{{ result.author }}</p>
-            <h3 class="text-lg font-bold text-white leading-snug tracking-[-0.022em] text-glass">{{ result.title }}</h3>
-            <p v-if="result.description && result.description !== result.title"
-              class="mt-2 text-[0.875rem] text-zinc-300 leading-relaxed whitespace-pre-line tracking-[-0.01em] text-glass-sm">{{ result.description }}</p>
+            <h3 v-if="!(result.platform === 'douyin' && result.hasSharedCaption)" class="text-lg font-bold text-white leading-snug tracking-[-0.022em] text-glass">{{ cleanDisplayText(result.title) }}</h3>
+            <p v-if="cleanDisplayText(result.description) && cleanDisplayText(result.description) !== cleanDisplayText(result.title)"
+              class="mt-2 break-words text-[0.875rem] text-zinc-300 leading-relaxed whitespace-pre-wrap tracking-[-0.01em] text-glass-sm">{{ cleanDisplayText(result.description) }}</p>
           </div>
           <button @click="copyText(buildCopyText())"
             class="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-[14px] liquid-glass-inset text-zinc-400 text-[0.75rem] hover:text-white active:scale-[0.96] transition-all text-glass-sm"
@@ -123,6 +123,10 @@ import { apiConfig } from '../../config/api';
 useHead({ title: '社交平台无水印解析下载 - proHub' });
 const inputRef = ref(null), inputUrl = ref(''), loading = ref(false), error = ref(''), result = ref(null), copied = ref(false), downloading = ref(false), toast = ref('');
 const platformLabel = computed(() => ({ xiaohongshu:'小红书', douyin:'抖音', weibo:'微博', unknown:'网页' }[result.value?.platform] || '网页'));
+const VERSION_NOTICE_PATTERN = /版本过低[，,]\s*升级后可展示全部信息/g;
+function cleanDisplayText(value) {
+  return String(value || '').replace(VERSION_NOTICE_PATTERN, '').replace(/\n{3,}/g, '\n\n').trim();
+}
 const allDownloads = computed(() => {
   const r = result.value; if (!r) return [];
   const l = [];
@@ -139,7 +143,7 @@ function proxyVideo(url) {
   if (/^https?:\/\//i.test(url)) return `${apiConfig.baseURL}/proxy-video?url=${encodeURIComponent(url)}`;
   return url;
 }
-function buildCopyText() { if(!result.value) return ''; const p=[]; if(result.value.title) p.push(result.value.title); if(result.value.description&&result.value.description!==result.value.title) p.push(result.value.description); return p.join('\n\n'); }
+function buildCopyText() { if(!result.value) return ''; const title=cleanDisplayText(result.value.title), description=cleanDisplayText(result.value.description); const p=[]; if(title) p.push(title); if(description&&description!==title) p.push(description); return p.join('\n\n'); }
 async function copyText(t) { try { await navigator.clipboard.writeText(t); } catch { const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); } copied.value=true; setTimeout(()=>{copied.value=false;},2000); }
 function onImgError(e) { e.target.style.display='none'; }
 function onVideoError(e) { e.target.style.display='none'; }

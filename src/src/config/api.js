@@ -21,6 +21,7 @@ export const apiConfig = {
     parse: '/parse',
     clipboardUpload: '/clipboard/upload',
     clipboardHealth: '/clipboard/health',
+    clipboardRoomSession: '/clipboard/room/session',
   },
 };
 

@@ -1,7 +1,7 @@
 <template>
   <div class="fixed bottom-6 right-6 z-40">
     <button @click="show = !show"
-      class="w-10 h-10 rounded-full liquid-glass flex items-center justify-center hover:shadow-lg active:scale-[0.95] transition-all"
+      class="w-10 h-10 rounded-full liquid-glass flex items-center justify-center hover:shadow-md active:scale-[0.95] motion-interactive"
       :class="{ 'ring-2 ring-ios-blue/40': show }" title="支持一下">
       <IconCoffee class="w-4.5 h-4.5 text-ios-orange" />
     </button>

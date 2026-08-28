@@ -1,9 +1,9 @@
 <template>
   <Transition name="back-to-top">
     <button
-      v-if="visible"
+      v-show="visible"
       type="button"
-      class="fixed bottom-6 right-20 z-40 flex h-10 w-10 items-center justify-center rounded-full liquid-glass text-white/80 shadow-lg transition-all hover:text-white hover:shadow-xl active:scale-95"
+      class="fixed bottom-6 right-20 z-40 flex h-10 w-10 items-center justify-center rounded-full liquid-glass text-white/80 shadow-md motion-interactive will-change-transform hover:text-white hover:shadow-lg active:scale-95"
       title="回到顶部"
       aria-label="回到顶部"
       @click="scrollToTop"
@@ -17,23 +17,53 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { IconArrowUp } from '@tabler/icons-vue';
 
+const SCROLL_THRESHOLD = 300;
 const visible = ref(false);
+let animationFrameId = null;
+
+function getScrollTop() {
+  const scrollingElement = document.scrollingElement;
+  return Math.max(
+    window.scrollY || 0,
+    scrollingElement?.scrollTop || 0,
+    document.documentElement.scrollTop || 0,
+    document.body.scrollTop || 0,
+  );
+}
 
 function updateVisibility() {
-  visible.value = window.scrollY > 400;
+  const nextVisible = getScrollTop() > SCROLL_THRESHOLD;
+  if (visible.value !== nextVisible) visible.value = nextVisible;
+}
+
+function scheduleVisibilityUpdate() {
+  if (animationFrameId !== null) return;
+  animationFrameId = window.requestAnimationFrame(() => {
+    animationFrameId = null;
+    updateVisibility();
+  });
 }
 
 function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const scrollingElement = document.scrollingElement;
+  if (scrollingElement) {
+    scrollingElement.scrollTo({ top: 0, behavior: 'smooth' });
+  } else {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 }
 
 onMounted(() => {
   updateVisibility();
-  window.addEventListener('scroll', updateVisibility, { passive: true });
+  window.addEventListener('scroll', scheduleVisibilityUpdate, { passive: true });
+  document.addEventListener('scroll', scheduleVisibilityUpdate, { passive: true, capture: true });
 });
 
 onUnmounted(() => {
-  window.removeEventListener('scroll', updateVisibility);
+  window.removeEventListener('scroll', scheduleVisibilityUpdate);
+  document.removeEventListener('scroll', scheduleVisibilityUpdate, true);
+  if (animationFrameId !== null) window.cancelAnimationFrame(animationFrameId);
+  animationFrameId = null;
 });
 </script>
 

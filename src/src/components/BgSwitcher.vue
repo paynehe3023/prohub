@@ -3,7 +3,7 @@
     <button
       type="button"
       @click="open = !open"
-      class="w-9 h-9 rounded-full liquid-glass flex items-center justify-center text-white/70 hover:text-white hover:shadow-lg active:scale-95 transition-all text-[0.625rem] font-bold"
+      class="w-9 h-9 rounded-full liquid-glass flex items-center justify-center text-white/70 hover:text-white hover:shadow-md active:scale-95 motion-interactive text-[0.625rem] font-bold"
       title="换背景"
       aria-label="换背景"
       :aria-expanded="open"
@@ -26,7 +26,7 @@
               :key="background.id"
               type="button"
               @click="applyBackground(background)"
-              class="relative h-9 rounded-xl border border-white/20 hover:border-white/70 transition-all active:scale-95 text-[0.6875rem] font-medium flex items-center justify-center overflow-hidden"
+              class="relative h-9 rounded-xl border border-white/20 hover:border-white/70 motion-interactive active:scale-95 text-[0.6875rem] font-medium flex items-center justify-center overflow-hidden"
               :class="activeBackgroundId === background.id ? 'ring-2 ring-ios-blue ring-offset-1 ring-offset-black/20' : ''"
               :style="previewStyle(background)"
               :title="background.label"
@@ -41,7 +41,7 @@
           <button
             type="button"
             @click="applyBackground(defaultWallpaper)"
-            class="relative w-full h-12 rounded-xl border border-white/20 hover:border-white/70 transition-all active:scale-95 text-[0.6875rem] font-medium flex items-center justify-center overflow-hidden"
+             class="relative w-full h-12 rounded-xl border border-white/20 hover:border-white/70 motion-interactive active:scale-95 text-[0.6875rem] font-medium flex items-center justify-center overflow-hidden"
             :class="activeBackgroundId === defaultWallpaper.id ? 'ring-2 ring-ios-blue ring-offset-1 ring-offset-black/20' : ''"
             :style="previewStyle(defaultWallpaper)"
           >
@@ -68,7 +68,7 @@
               :key="background.id"
               type="button"
               @click="applyBackground(background)"
-              class="relative h-16 rounded-xl border border-white/20 hover:border-white/70 transition-all active:scale-95 text-[0.625rem] font-medium flex items-end justify-center overflow-hidden px-1 pb-1"
+             class="relative h-16 rounded-xl border border-white/20 hover:border-white/70 motion-interactive active:scale-95 text-[0.625rem] font-medium flex items-end justify-center overflow-hidden px-1 pb-1"
               :class="activeBackgroundId === background.id ? 'ring-2 ring-ios-blue ring-offset-1 ring-offset-black/20' : ''"
               :style="previewStyle(background)"
               :title="background.copyright || background.label"
@@ -78,7 +78,7 @@
           </div>
         </section>
 
-        <label class="w-full h-8 rounded-xl liquid-glass-inset flex items-center justify-center text-[0.625rem] text-zinc-400 hover:text-white cursor-pointer transition-all text-glass-sm">
+         <label class="w-full h-8 rounded-xl liquid-glass-inset flex items-center justify-center text-[0.625rem] text-zinc-400 hover:text-white cursor-pointer motion-interactive text-glass-sm">
           自定义图片...
           <input type="file" accept="image/*" class="hidden" @change="onCustom" />
         </label>

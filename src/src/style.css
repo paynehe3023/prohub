@@ -8,7 +8,7 @@ body {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  background-attachment: fixed;
+  background-attachment: scroll;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -19,21 +19,21 @@ body {
 
 /* 主容器：加厚透明度 + 内层暗色底衬 */
 .liquid-glass {
-  background: rgba(0, 0, 0, 0.20);
-  backdrop-filter: blur(36px) saturate(180%);
-  -webkit-backdrop-filter: blur(36px) saturate(180%);
+  background: rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-top-color: rgba(255, 255, 255, 0.45);
   border-left-color: rgba(255, 255, 255, 0.35);
   border-radius: 28px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.60);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
 }
 
 /* 内嵌玻璃（输入框/次级元素）— 加深底色确保输入文字可见 */
 .liquid-glass-inset {
-  background: rgba(0, 0, 0, 0.30);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-top-color: rgba(255, 255, 255, 0.20);
   border-radius: 18px;
@@ -41,37 +41,30 @@ body {
 
 /* 导航栏 — 略厚 */
 .liquid-glass-strong {
-  background: rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.20);
   border-top-color: rgba(255, 255, 255, 0.40);
   border-left-color: rgba(255, 255, 255, 0.30);
   border-radius: 28px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.50);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36);
 }
 
 /* =============================================================
    文本可读性 — 多层阴影确保任何背景下可见
    ============================================================= */
 .text-glass {
-  text-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.95),
-    0 1px 4px rgba(0, 0, 0, 0.80),
-    0 0 2px rgba(0, 0, 0, 0.90);
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.68);
 }
 .text-glass-sm {
-  text-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.90),
-    0 0 2px rgba(0, 0, 0, 0.85);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.58);
 }
 
 /* 在液体玻璃内的文字获得额外底衬对比 */
 .liquid-glass h1, .liquid-glass h2, .liquid-glass h3,
 .liquid-glass-strong h1, .liquid-glass-strong h2, .liquid-glass-strong h3 {
-  text-shadow:
-    0 2px 12px rgba(0, 0, 0, 0.95),
-    0 1px 4px rgba(0, 0, 0, 0.90);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72);
 }
 
 /* =============================================================
@@ -85,26 +78,45 @@ body {
   border-radius: 16px;
   font-weight: 600;
   font-size: 0.9375rem;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.70);
-  transition: all 0.15s ease;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+  transition-property: background-color, color, box-shadow, transform;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
-.btn-ios:active { transform: scale(0.98); }
+.btn-ios:active { transform: scale(0.985); }
 .btn-ios-primary {
   background: #007AFF;
   color: white;
-  box-shadow: 0 2px 12px rgba(0,122,255,0.35);
+  box-shadow: 0 2px 8px rgba(0,122,255,0.24);
 }
 .btn-ios-primary:hover {
   background: #3385FF;
-  box-shadow: 0 4px 20px rgba(0,122,255,0.50);
+  box-shadow: 0 3px 12px rgba(0,122,255,0.34);
 }
 .btn-ios-glass {
   background: rgba(0,0,0,0.35);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,0.20);
   border-top-color: rgba(255,255,255,0.35);
   color: white;
+}
+
+.motion-interactive {
+  transition-property: background-color, color, border-color, box-shadow, opacity, transform;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 /* =============================================================

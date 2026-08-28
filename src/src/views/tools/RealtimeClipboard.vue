@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen py-8 px-4">
     <div class="max-w-7xl mx-auto space-y-6">
-      <section class="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl shadow-xl overflow-hidden">
+      <section v-if="isHost" class="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl shadow-xl overflow-hidden">
         <div class="p-6 md:p-8 bg-gradient-to-br from-slate-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
           <div class="flex flex-col xl:flex-row xl:items-start gap-6">
             <div class="flex-1 space-y-5">
@@ -10,9 +10,13 @@
                   <component :is="statusIcon" size="14" />
                   {{ connectionLabel }}
                 </span>
-                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-sky-200 text-sky-700 bg-sky-50 dark:border-sky-900/50 dark:text-sky-300 dark:bg-sky-900/20">
+                <span v-if="roomTtlMinutes > 0" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-sky-200 text-sky-700 bg-sky-50 dark:border-sky-900/50 dark:text-sky-300 dark:bg-sky-900/20">
                   <IconClockHour4 size="14" />
                   {{ ttlLabel }} 自动清空
+                </span>
+                <span v-else class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-emerald-200 text-emerald-700 bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-300 dark:bg-emerald-900/20">
+                  <IconClockHour4 size="14" />
+                  永不销毁
                 </span>
                 <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-slate-200 text-slate-600 bg-white dark:border-slate-700 dark:text-slate-300 dark:bg-slate-900/60">
                   <IconClipboardText size="14" />
@@ -33,16 +37,21 @@
               <div class="grid gap-4 md:grid-cols-3">
                 <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 p-4">
                   <div class="flex items-center justify-between gap-3">
-                    <div>
+                    <div class="min-w-0">
                       <p class="text-xs uppercase tracking-[0.24em] text-slate-400">当前房间</p>
-                      <p class="mt-1 text-2xl font-black tracking-[0.35em] text-slate-900 dark:text-white">{{ roomId }}</p>
+                      <p class="mt-1 text-2xl font-black tracking-[0.35em] text-slate-900 dark:text-white">{{ displayRoomId }}</p>
                     </div>
-                    <button type="button" @click="copyRoomUrl" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-700 transition-colors">
-                      <IconCopy size="16" />
-                      复制房间链接
-                    </button>
+                    <div class="flex shrink-0 items-center gap-2">
+                      <button type="button" @click="toggleRoomCodeVisibility" :aria-label="roomCodeVisible ? '隐藏完整房间号' : '显示完整房间号'" :title="roomCodeVisible ? '隐藏完整房间号' : '显示完整房间号'" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                        <component :is="roomCodeVisible ? IconEyeOff : IconEye" size="18" />
+                      </button>
+                      <button type="button" @click="copyRoomUrl" class="inline-flex h-9 items-center gap-2 rounded-xl bg-slate-900 px-2.5 text-sm font-medium text-white hover:bg-slate-700 transition-colors">
+                        <IconCopy size="18" />
+                        <span class="hidden sm:inline">复制链接</span>
+                      </button>
+                    </div>
                   </div>
-                  <p class="mt-3 text-xs text-slate-500 break-all">{{ roomUrl }}</p>
+                  <p class="mt-3 text-xs text-slate-500 break-all">{{ displayRoomUrl }}</p>
                 </div>
 
                 <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 p-4">
@@ -52,7 +61,7 @@
                       <p class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{{ remainingText }}</p>
                     </div>
                     <select v-model.number="roomTtlMinutes" @change="syncRoomSettings" class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-sky-500">
-                      <option v-for="option in ttlOptions" :key="option" :value="option">{{ option }} 分钟</option>
+                      <option v-for="option in ttlOptions" :key="option" :value="option">{{ option === 0 ? '永不销毁' : `${option} 分钟` }}</option>
                     </select>
                   </div>
                   <p class="mt-3 text-xs text-slate-500">房间无活动后自动清空，避免持久化隐私残留。</p>
@@ -106,6 +115,25 @@
         </div>
       </section>
 
+      <section v-else class="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl px-5 py-4 shadow-xl">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" @click="copyRoomUrl" class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors">
+              <IconCopy size="18" />
+              房间号: {{ displayRoomId }}
+            </button>
+            <button type="button" @click="toggleRoomCodeVisibility" :aria-label="roomCodeVisible ? '隐藏完整房间号' : '显示完整房间号'" :title="roomCodeVisible ? '隐藏完整房间号' : '显示完整房间号'" class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
+              <component :is="roomCodeVisible ? IconEyeOff : IconEye" size="16" />
+            </button>
+            <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold" :class="statusBadgeClass">
+              <component :is="statusIcon" size="14" />
+              {{ connectionLabel }}
+            </span>
+          </div>
+          <span class="text-xs text-slate-500 dark:text-slate-400">点击房间号复制链接</span>
+        </div>
+      </section>
+
       <div class="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         <section class="space-y-6">
           <div class="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
@@ -134,10 +162,11 @@
               <h3 class="text-base font-bold text-slate-900 dark:text-white">拖拽 / 粘贴图片与文件</h3>
             </div>
             <p class="text-sm text-slate-600 dark:text-slate-400 leading-6">支持截图粘贴、图片拖拽、文件拖拽。小图片直接内联同步，大文件自动走临时链接广播。</p>
+            <p class="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">支持图片及常用文档，单文件最大 50MB</p>
             <div class="mt-4 flex flex-wrap gap-2">
-              <button type="button" @click="triggerFilePick" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 text-white text-sm font-medium hover:bg-sky-500 transition-colors">
+              <button type="button" :disabled="uploading" @click="triggerFilePick" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 text-white text-sm font-medium hover:bg-sky-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
                 <IconPhoto size="16" />
-                选择图片/文件
+                {{ uploading ? '传输中...' : '选择图片/文件' }}
               </button>
               <input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFileSelect" />
             </div>
@@ -153,7 +182,7 @@
             <div class="flex flex-wrap items-center gap-2 text-xs">
               <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                 <IconDeviceMobile size="14" />
-                {{ roomId }}
+                {{ displayRoomId }}
               </span>
               <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full" :class="statusBadgeClass">
                 <component :is="statusIcon" size="14" />
@@ -167,7 +196,29 @@
           </div>
 
           <div class="space-y-4">
-            <article v-for="clip in sortedClips" :key="clip.id" class="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
+            <article v-for="clip in sortedClips" :key="clip.id" class="relative overflow-hidden rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
+              <div v-if="clip.transferStatus === 'uploading' || clip.transferStatus === 'failed'" class="absolute inset-x-0 bottom-0 z-10 bg-slate-950/95 px-3 py-2.5 text-white md:inset-0 md:flex md:items-center md:justify-center md:bg-slate-950/55 md:px-6 md:backdrop-blur-sm">
+                <div class="w-full max-w-sm rounded-xl border border-white/15 bg-slate-950/90 p-3 shadow-xl md:rounded-2xl md:p-4">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <IconLoader2 v-if="clip.transferStatus === 'uploading'" class="h-4 w-4 shrink-0 animate-spin text-sky-300" />
+                      <IconX v-else class="h-4 w-4 shrink-0 text-rose-300" />
+                      <span class="truncate text-sm font-semibold">{{ clip.transferStatus === 'uploading' ? '正在传输' : '传输失败' }}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-bold">{{ clip.transferProgress || 0 }}%</span>
+                      <button v-if="clip.transferStatus === 'uploading'" type="button" @click.stop="cancelUpload(clip.msgId)" aria-label="取消传输" title="取消传输" class="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-300 hover:bg-white/10 hover:text-white">
+                        <IconX size="14" />
+                      </button>
+                    </div>
+                  </div>
+                  <p class="mt-1 truncate text-xs text-slate-300">{{ displayFileName(clip.fileName, 'clipboard-file') }}</p>
+                  <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15 md:mt-3 md:h-2">
+                    <div class="h-full rounded-full bg-sky-400 transition-[width] duration-150" :class="clip.transferStatus === 'failed' ? 'bg-rose-400' : ''" :style="{ width: `${clip.transferProgress || 0}%` }"></div>
+                  </div>
+                  <p class="mt-2 hidden text-[0.6875rem] text-slate-400 md:block">{{ clip.transferStatus === 'uploading' ? '请保持页面打开，传输完成后即可预览和下载。' : (clip.transferError || '文件传输失败') }}</p>
+                </div>
+              </div>
               <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div class="flex items-center gap-3">
                   <span class="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
@@ -183,13 +234,17 @@
                 </div>
 
                 <div class="flex flex-wrap gap-2">
-                  <button type="button" @click="copyClip(clip)" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <button v-if="clip.kind === 'text' || isTextFile(clip)" type="button" @click="copyClip(clip)" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                     <IconCopy size="16" />
-                    复制
+                    复制文本
+                  </button>
+                  <button v-if="isTextFile(clip)" type="button" @click="previewTextFile(clip)" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-violet-200 text-sm text-violet-700 bg-violet-50 hover:bg-violet-100 dark:border-violet-900/50 dark:bg-violet-900/20 dark:text-violet-300 transition-colors">
+                    <IconFileText size="16" />
+                    预览
                   </button>
                   <button v-if="hasDownload(clip)" type="button" @click="downloadClip(clip)" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-sky-200 text-sm text-sky-700 bg-sky-50 hover:bg-sky-100 dark:border-sky-900/50 dark:bg-sky-900/20 dark:text-sky-300 transition-colors">
                     <IconDownload size="16" />
-                    下载原图
+                    {{ clip.kind === 'image' ? '下载原图' : '下载原文件' }}
                   </button>
                   <button type="button" @click="deleteClip(clip)" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-rose-200 text-sm text-rose-700 bg-rose-50 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-300 transition-colors">
                     <IconTrash size="16" />
@@ -205,10 +260,10 @@
 
                 <div v-else-if="clip.kind === 'image'" class="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)] items-start">
                   <div class="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900">
-                    <img :src="clip.previewUrl || clip.dataUrl" alt="图片预览" class="w-full h-auto object-contain" />
+                    <img :src="clip.localPreviewUrl || clip.previewUrl || clip.dataUrl" alt="图片预览" class="w-full h-auto object-contain" />
                   </div>
                   <div class="space-y-3 text-sm text-slate-600 dark:text-slate-400">
-                    <p class="break-all">文件名：{{ clip.fileName || 'image.png' }}</p>
+                    <p class="break-all">文件名：{{ displayFileName(clip.fileName, 'image.png') }}</p>
                     <p>尺寸：{{ formatBytes(clip.size) }}</p>
                     <p>类型：{{ clip.mimeType || 'image/*' }}</p>
                   </div>
@@ -219,7 +274,7 @@
                     <IconFile size="22" />
                   </div>
                   <div class="min-w-0 flex-1">
-                    <p class="text-sm font-medium text-slate-900 dark:text-white break-all">{{ clip.fileName || 'clipboard-file' }}</p>
+                    <p class="text-sm font-medium text-slate-900 dark:text-white break-all">{{ displayFileName(clip.fileName, 'clipboard-file') }}</p>
                     <p class="text-xs text-slate-500 mt-1">{{ formatBytes(clip.size) }} · {{ clip.mimeType || 'application/octet-stream' }}</p>
                     <p class="text-xs text-slate-500 mt-1 break-all">{{ clip.downloadUrl }}</p>
                   </div>
@@ -244,6 +299,25 @@
         </div>
       </transition-group>
     </div>
+
+    <div v-if="textPreview.open" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" @click.self="closeTextPreview">
+      <section class="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 text-white shadow-2xl">
+        <div class="flex items-center justify-between gap-4 border-b border-slate-800 px-5 py-4">
+          <div class="min-w-0">
+            <h2 class="truncate text-base font-bold">{{ textPreview.fileName }}</h2>
+            <p class="mt-1 text-xs text-slate-400">文本文件预览</p>
+          </div>
+          <button type="button" @click="closeTextPreview" aria-label="关闭文本预览" title="关闭" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-800 hover:text-white">
+            <IconX size="18" />
+          </button>
+        </div>
+        <div class="min-h-0 overflow-auto p-5">
+          <div v-if="textPreview.loading" class="py-12 text-center text-sm text-slate-400">正在读取文件...</div>
+          <div v-else-if="textPreview.error" class="rounded-2xl border border-rose-900/60 bg-rose-950/30 p-4 text-sm text-rose-300">{{ textPreview.error }}</div>
+          <pre v-else class="whitespace-pre-wrap break-words rounded-2xl bg-slate-900 p-4 text-sm leading-7 text-slate-200">{{ textPreview.content }}</pre>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -261,8 +335,11 @@ import {
   IconCopy,
   IconDeviceMobile,
   IconDownload,
+  IconEye,
+  IconEyeOff,
   IconFile,
   IconFileText,
+  IconLoader2,
   IconPhoto,
   IconRefresh,
   IconSend,
@@ -286,12 +363,18 @@ const router = useRouter();
 const socketBaseUrl = apiConfig.socketURL || window.location.origin;
 const defaultShareOrigin = apiConfig.publicOrigin || window.location.origin;
 const SHARE_ORIGIN_STORAGE_KEY = 'prohub-clipboard-share-origin';
+const HOST_TOKEN_STORAGE_PREFIX = 'prohub-clipboard-host-token:';
+const CLIENT_ID_STORAGE_KEY = 'prohub-clipboard-client-id';
 const shareOriginDraft = ref(defaultShareOrigin);
-const ttlOptions = [5, 10, 15, 30, 60];
+const ttlOptions = [0, 5, 10, 15, 30, 60];
 const maxClips = 20;
 const inlineImageThreshold = 750 * 1024;
+const maxFileBytes = 50 * 1024 * 1024;
 
 const roomId = ref('');
+const isHost = ref(false);
+const hostToken = ref('');
+const roomCodeVisible = ref(false);
 const roomTtlMinutes = ref(15);
 const roomExpiresAt = ref(Date.now() + 15 * 60 * 1000);
 const clips = ref([]);
@@ -304,6 +387,13 @@ const now = ref(Date.now());
 const toasts = ref([]);
 const composerRef = ref(null);
 const fileInputRef = ref(null);
+const textPreview = ref({
+  open: false,
+  loading: false,
+  fileName: '',
+  content: '',
+  error: '',
+});
 
 let socketInstance = null;
 let textTimer = null;
@@ -311,6 +401,24 @@ let ticker = null;
 let lastSentText = '';
 let qrStamp = 0;
 let visibilityHandler = null;
+const uploadRequests = new Map();
+const uploadReaders = new Map();
+const cancelledUploads = new Set();
+const seenMessageIds = new Set();
+
+function getClientId() {
+  try {
+    const existing = window.sessionStorage.getItem(CLIENT_ID_STORAGE_KEY);
+    if (existing) return existing;
+    const generated = createMessageId();
+    window.sessionStorage.setItem(CLIENT_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return createMessageId();
+  }
+}
+
+const selfClientId = getClientId();
 
 function normalizeBaseUrl(value) {
   const candidate = String(value || '').trim();
@@ -330,9 +438,17 @@ function isLoopbackHost(hostname) {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.endsWith('.localhost');
 }
 
+function maskRoomId(value) {
+  const normalized = String(value || '');
+  if (normalized.length <= 3) return normalized ? normalized.slice(0, 1) + '***' : '';
+  return normalized.slice(0, 2) + '***' + normalized.slice(-1);
+}
+
 const sortedClips = computed(() => [...clips.value].sort((left, right) => right.createdAt - left.createdAt));
 const shareOrigin = computed(() => normalizeBaseUrl(shareOriginDraft.value) || defaultShareOrigin);
 const roomUrl = computed(() => (roomId.value ? shareOrigin.value + '/clipboard/' + roomId.value : ''));
+const displayRoomId = computed(() => (roomCodeVisible.value ? roomId.value : maskRoomId(roomId.value)));
+const displayRoomUrl = computed(() => (roomId.value ? shareOrigin.value + '/clipboard/' + displayRoomId.value : ''));
 const isLocalShareOrigin = computed(() => {
   try {
     return isLoopbackHost(new URL(shareOrigin.value).hostname);
@@ -342,7 +458,7 @@ const isLocalShareOrigin = computed(() => {
 });
 const shareOriginHint = computed(() => (isLocalShareOrigin.value ? '当前是本机地址，手机扫码请改成电脑局域网 IP 或正式域名。' : '二维码和复制链接会使用这个地址生成。正式部署一般无需修改。'));
 const shareOriginHintClass = computed(() => (isLocalShareOrigin.value ? 'text-amber-600 dark:text-amber-300' : 'text-slate-500'));
-const ttlLabel = computed(() => roomTtlMinutes.value + ' 分钟');
+const ttlLabel = computed(() => (roomTtlMinutes.value === 0 ? '永不销毁' : roomTtlMinutes.value + ' 分钟'));
 const connectionLabel = computed(() => {
   if (socketState.value === 'connected') return '已连接';
   if (socketState.value === 'reconnecting') return '重连中';
@@ -356,6 +472,7 @@ const statusBadgeClass = computed(() => {
   return 'border-amber-200 text-amber-700 bg-amber-50 dark:border-amber-900/50 dark:text-amber-300 dark:bg-amber-900/20';
 });
 const remainingText = computed(() => {
+  if (roomTtlMinutes.value === 0 || !roomExpiresAt.value) return '永不销毁';
   const seconds = Math.max(0, Math.floor((roomExpiresAt.value - now.value) / 1000));
   if (seconds <= 0) return '即将清空';
   const minutes = Math.floor(seconds / 60);
@@ -375,8 +492,72 @@ function normalizeRoomId(value) {
   return candidate.length >= 4 ? candidate.slice(0, 24) : '';
 }
 
+function createMessageId() {
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function hostTokenStorageKey(value) {
+  return HOST_TOKEN_STORAGE_PREFIX + normalizeRoomId(value);
+}
+
+function readHostToken(value) {
+  try {
+    return window.sessionStorage.getItem(hostTokenStorageKey(value)) || '';
+  } catch {
+    return '';
+  }
+}
+
+function rememberHostToken(value, token) {
+  const nextRoomId = normalizeRoomId(value);
+  const nextToken = String(token || '').trim();
+  if (!nextRoomId || !nextToken) return;
+  window.sessionStorage.setItem(hostTokenStorageKey(nextRoomId), nextToken);
+}
+
+function forgetHostToken(value) {
+  try {
+    window.sessionStorage.removeItem(hostTokenStorageKey(value));
+  } catch {
+    return;
+  }
+}
+
+async function requestRoomSession(nextRoomId, intent = 'join') {
+  const normalizedRoomId = normalizeRoomId(nextRoomId);
+  if (!normalizedRoomId) throw new Error('房间号无效');
+
+  const response = await fetch(apiConfig.baseURL + apiConfig.endpoints.clipboardRoomSession, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      roomId: normalizedRoomId,
+      intent,
+      hostToken: readHostToken(normalizedRoomId),
+      ttlMinutes: roomTtlMinutes.value,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || `房间身份确认失败（HTTP ${response.status}）`);
+  }
+
+  roomId.value = normalizedRoomId;
+  const confirmedHost = data.role === 'host' && Boolean(data.hostToken);
+  isHost.value = confirmedHost;
+  hostToken.value = confirmedHost ? String(data.hostToken) : '';
+  if (isHost.value && hostToken.value) {
+    rememberHostToken(normalizedRoomId, hostToken.value);
+  } else if (!isHost.value) {
+    forgetHostToken(normalizedRoomId);
+  }
+  syncRoomMeta(data.room);
+  return data;
+}
+
 function showToast(type, title, message) {
-  const id = crypto.randomUUID();
+  const id = createMessageId();
   toasts.value.unshift({ id, type, title, message });
   window.setTimeout(() => {
     toasts.value = toasts.value.filter((toast) => toast.id !== id);
@@ -411,6 +592,20 @@ function formatTime(timestamp) {
   return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(timestamp));
 }
 
+function displayFileName(value, fallback = 'clipboard-file') {
+  const rawName = String(value || '').trim();
+  if (!rawName) return fallback;
+  try {
+    return decodeURIComponent(rawName);
+  } catch {
+    return rawName;
+  }
+}
+
+function toggleRoomCodeVisibility() {
+  roomCodeVisible.value = !roomCodeVisible.value;
+}
+
 function clipTypeLabel(clip) {
   if (clip.kind === 'text') return '文本';
   if (clip.kind === 'image') return '图片';
@@ -434,6 +629,103 @@ function clipSizeLabel(clip) {
   return formatBytes(clip.size);
 }
 
+const textFileExtensions = new Set(['.txt', '.md', '.markdown', '.json', '.js', '.jsx', '.ts', '.tsx', '.vue', '.py', '.java', '.c', '.cpp', '.h', '.css', '.scss', '.less', '.html', '.htm', '.xml', '.yaml', '.yml', '.csv', '.log', '.sh', '.bat', '.ps1']);
+const textFileMimeTypes = new Set(['application/json', 'application/javascript', 'application/xml', 'application/x-sh', 'application/x-httpd-php']);
+
+function isTextFile(clip) {
+  if (!clip || clip.kind === 'text') return false;
+  const mimeType = String(clip.mimeType || '').toLowerCase().split(';')[0];
+  if (mimeType.startsWith('text/') || textFileMimeTypes.has(mimeType)) return true;
+  const fileName = displayFileName(clip.fileName).toLowerCase();
+  return Array.from(textFileExtensions).some((extension) => fileName.endsWith(extension));
+}
+
+function clipMessageKey(clip) {
+  return String(clip?.msgId || clip?.id || '');
+}
+
+function upsertClip(clip, { allowSelf = false } = {}) {
+  if (!clip) return false;
+  const key = clipMessageKey(clip);
+  if (!key) return false;
+  const index = clips.value.findIndex((item) => clipMessageKey(item) === key || item.id === clip.id);
+  if (index < 0 && !allowSelf && clip.clientId && clip.clientId === selfClientId) return false;
+  if (index < 0 && seenMessageIds.has(key)) return false;
+  const previous = index >= 0 ? clips.value[index] : null;
+  if (previous?.localPreviewUrl && previous.localPreviewUrl !== clip.localPreviewUrl) {
+    URL.revokeObjectURL(previous.localPreviewUrl);
+  }
+  seenMessageIds.add(key);
+  if (index >= 0) {
+    clips.value.splice(index, 1, clip);
+    return false;
+  }
+  clips.value.unshift(clip);
+  return true;
+}
+
+function replaceInitialClips(incomingClips) {
+  const nextClips = Array.isArray(incomingClips) ? incomingClips.filter(Boolean) : [];
+  const incomingKeys = new Set(nextClips.map((clip) => clipMessageKey(clip)));
+  const pendingUploads = clips.value.filter((item) => (
+    (item.transferStatus === 'uploading' || item.transferStatus === 'failed')
+    && !incomingKeys.has(clipMessageKey(item))
+  ));
+  nextClips.forEach((clip) => seenMessageIds.add(clipMessageKey(clip)));
+  clips.value = [...nextClips, ...pendingUploads];
+}
+
+function updateUploadCard(msgId, patch) {
+  const index = clips.value.findIndex((clip) => clip.msgId === msgId);
+  if (index >= 0) clips.value.splice(index, 1, { ...clips.value[index], ...patch });
+}
+
+function createUploadCard(file) {
+  const msgId = createMessageId();
+  cancelledUploads.delete(msgId);
+  const localPreviewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
+  const localClip = {
+    id: `local-${msgId}`,
+    msgId,
+    roomId: roomId.value,
+    clientId: selfClientId,
+    kind: file.type.startsWith('image/') ? 'image' : 'file',
+    fileName: file.name,
+    mimeType: file.type || 'application/octet-stream',
+    size: file.size,
+    localPreviewUrl,
+    createdAt: Date.now(),
+    transferStatus: 'uploading',
+    transferProgress: 0,
+  };
+  upsertClip(localClip, { allowSelf: true });
+  return msgId;
+}
+
+function markUploadFailed(msgId, error) {
+  if (cancelledUploads.has(msgId)) {
+    updateUploadCard(msgId, {
+      transferStatus: 'cancelled',
+      transferProgress: 0,
+      transferError: '已取消传输',
+    });
+    cancelledUploads.delete(msgId);
+    return;
+  }
+  updateUploadCard(msgId, {
+    transferStatus: 'failed',
+    transferProgress: 0,
+    transferError: error?.message || '文件传输失败',
+  });
+}
+
+function completeUpload(msgId, clip, file) {
+  updateUploadCard(msgId, { transferProgress: 100 });
+  upsertClip(clip, { allowSelf: true });
+  cancelledUploads.delete(msgId);
+  showToast('success', '传输完成', `${file.type.startsWith('image/') ? '图片' : '文件'} ${file.name} 传输完成。`);
+}
+
 function hasDownload(clip) {
   return Boolean(clip.downloadUrl || clip.dataUrl || clip.previewUrl);
 }
@@ -450,8 +742,11 @@ function connectSocket() {
 
   socketState.value = 'connecting';
   socketInstance = io(socketBaseUrl, {
-    roomId: roomId.value,
-    ttlMinutes: roomTtlMinutes.value,
+    query: {
+      roomId: roomId.value,
+      clientId: selfClientId,
+      hostToken: hostToken.value,
+    },
     path: '/socket.io',
     transports: ['websocket', 'polling'],
     reconnection: true,
@@ -462,11 +757,15 @@ function connectSocket() {
 
   socketInstance.on('connect', () => {
     socketState.value = 'connected';
-    socketInstance.emit('room:join', { roomId: roomId.value, ttlMinutes: roomTtlMinutes.value }, (response) => {
+    socketInstance.emit('room:join', {
+      roomId: roomId.value,
+      ttlMinutes: roomTtlMinutes.value,
+      hostToken: hostToken.value,
+    }, (response) => {
       if (response?.ok) {
-        clips.value = [...(response.clips || [])];
-        if (response.room?.ttlMinutes) roomTtlMinutes.value = response.room.ttlMinutes;
-        if (response.room?.expiresAt) roomExpiresAt.value = response.room.expiresAt;
+        if (response.role) isHost.value = response.role === 'host';
+        replaceInitialClips(response.clips || []);
+        syncRoomMeta(response.room);
         showToast('success', '已进入房间', '房间历史内容已同步。');
       }
     });
@@ -482,7 +781,11 @@ function connectSocket() {
 
   socketInstance.io.on('reconnect', () => {
     socketState.value = 'connected';
-    socketInstance.emit('room:join', { roomId: roomId.value, ttlMinutes: roomTtlMinutes.value });
+    socketInstance.emit('room:join', {
+      roomId: roomId.value,
+      ttlMinutes: roomTtlMinutes.value,
+      hostToken: hostToken.value,
+    });
     showToast('success', '连接已恢复', '房间已自动重新加入。');
   });
 
@@ -492,16 +795,16 @@ function connectSocket() {
   });
 
   socketInstance.on('clip:init', (payload) => {
-    clips.value = [...(payload?.clips || [])];
-    if (payload?.room?.ttlMinutes) roomTtlMinutes.value = payload.room.ttlMinutes;
-    if (payload?.room?.expiresAt) roomExpiresAt.value = payload.room.expiresAt;
+    replaceInitialClips(payload?.clips || []);
+    syncRoomMeta(payload?.room);
   });
 
   socketInstance.on('clip:sync', (payload) => {
     if (payload?.room?.expiresAt) roomExpiresAt.value = payload.room.expiresAt;
     if (payload?.clip) {
-      clips.value = [payload.clip].concat(clips.value.filter((item) => item.id !== payload.clip.id));
-      showToast('success', '收到同步', clipTypeLabel(payload.clip) + ' 已同步到房间。');
+      if (upsertClip(payload.clip)) {
+        showToast('success', '收到同步', clipTypeLabel(payload.clip) + ' 已同步到房间。');
+      }
     }
   });
 
@@ -511,8 +814,7 @@ function connectSocket() {
   });
 
   socketInstance.on('room:settings', (payload) => {
-    if (payload?.ttlMinutes) roomTtlMinutes.value = payload.ttlMinutes;
-    if (payload?.expiresAt) roomExpiresAt.value = payload.expiresAt;
+    syncRoomMeta(payload);
   });
 
   socketInstance.on('room:cleared', (payload) => {
@@ -530,21 +832,12 @@ function disconnectSocket() {
   }
 }
 
-function initRoom() {
-  const routeRoomId = normalizeRoomId(route.params.roomId);
-  if (routeRoomId) {
-    roomId.value = routeRoomId;
-    return;
-  }
-
-  router.replace({ name: 'RealtimeClipboard', params: { roomId: generateRoomId() } });
-}
-
 function syncRoomSettings() {
   if (!socketInstance) return;
   socketInstance.emit('room:update-settings', {
     roomId: roomId.value,
     ttlMinutes: roomTtlMinutes.value,
+    hostToken: hostToken.value,
   });
 }
 
@@ -567,10 +860,17 @@ function sendTextNow() {
     return;
   }
   if (text === lastSentText) return;
+  if (!socketInstance) {
+    showToast('error', '尚未连接', '请等待房间连接成功后再同步。');
+    return;
+  }
 
-  socketInstance?.emit('clip:send', {
+  const msgId = createMessageId();
+  socketInstance.emit('clip:send', {
     roomId: roomId.value,
     kind: 'text',
+    msgId,
+    clientId: selfClientId,
     text,
     ttlMinutes: roomTtlMinutes.value,
   }, (response) => {
@@ -578,79 +878,152 @@ function sendTextNow() {
       showToast('error', '同步失败', response?.error || '文本发送失败');
       return;
     }
-    clips.value = [response.clip].concat(clips.value.filter((item) => item.id !== response.clip.id));
-    roomExpiresAt.value = response.room?.expiresAt || roomExpiresAt.value;
+    upsertClip(response.clip, { allowSelf: true });
+    if (response.room) syncRoomMeta(response.room);
     lastSentText = text;
     textDraft.value = '';
     showToast('success', '文本已同步', '同房间设备已收到这段文本。');
   });
 }
 
-function readFileAsDataUrl(file) {
+function readFileAsDataUrl(file, onProgress, msgId) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('读取文件失败'));
+    if (msgId) uploadReaders.set(msgId, reader);
+    reader.onprogress = (event) => {
+      if (event.lengthComputable && typeof onProgress === 'function') {
+        onProgress(Math.min(90, Math.round((event.loaded / event.total) * 90)));
+      }
+    };
+    reader.onload = () => {
+      if (msgId) uploadReaders.delete(msgId);
+      resolve(String(reader.result || ''));
+    };
+    reader.onerror = () => {
+      if (msgId) uploadReaders.delete(msgId);
+      reject(new Error('读取文件失败'));
+    };
+    reader.onabort = () => {
+      if (msgId) uploadReaders.delete(msgId);
+      reject(new Error('已取消传输'));
+    };
     reader.readAsDataURL(file);
   });
 }
 
-async function uploadAndSendFile(file) {
-  if (!file) return;
+function uploadFileWithProgress(file, msgId) {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('roomId', roomId.value);
+    formData.append('ttlMinutes', String(roomTtlMinutes.value));
+    formData.append('msgId', msgId);
+    formData.append('clientId', selfClientId);
+    formData.append('file', file);
 
-  if (file.type.startsWith('image/') && file.size <= inlineImageThreshold) {
-    const dataUrl = await readFileAsDataUrl(file);
-    await new Promise((resolve, reject) => {
-      socketInstance?.emit('clip:send', {
-        roomId: roomId.value,
-        kind: 'image',
-        dataUrl,
-        fileName: file.name,
-        mimeType: file.type,
-        size: file.size,
-        ttlMinutes: roomTtlMinutes.value,
-      }, (response) => {
-        if (!response?.ok) {
-          reject(new Error(response?.error || '图片同步失败'));
-          return;
-        }
-        clips.value = [response.clip].concat(clips.value.filter((item) => item.id !== response.clip.id));
-        roomExpiresAt.value = response.room?.expiresAt || roomExpiresAt.value;
-        resolve();
-      });
-    });
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append('roomId', roomId.value);
-  formData.append('ttlMinutes', String(roomTtlMinutes.value));
-  formData.append('file', file);
-
-  const uploadResponse = await fetch(apiConfig.baseURL + apiConfig.endpoints.clipboardUpload, {
-    method: 'POST',
-    body: formData,
-  });
-  const uploadData = await uploadResponse.json().catch(() => ({}));
-  if (!uploadResponse.ok) {
-    throw new Error(uploadData.message || uploadData.error || '上传失败');
-  }
-
-  await new Promise((resolve, reject) => {
-    socketInstance?.emit('clip:send', {
-      roomId: roomId.value,
-      assetId: uploadData?.asset?.assetId,
-      ttlMinutes: roomTtlMinutes.value,
-    }, (response) => {
-      if (!response?.ok) {
-        reject(new Error(response?.error || '文件同步失败'));
+    const request = new XMLHttpRequest();
+    uploadRequests.set(msgId, request);
+    request.open('POST', apiConfig.baseURL + apiConfig.endpoints.clipboardUpload);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        updateUploadCard(msgId, { transferProgress: Math.min(95, Math.round((event.loaded / event.total) * 95)) });
+      }
+    };
+    request.onerror = () => {
+      uploadRequests.delete(msgId);
+      reject(new Error('上传连接失败'));
+    };
+    request.onabort = () => {
+      uploadRequests.delete(msgId);
+      reject(new Error('已取消传输'));
+    };
+    request.onload = () => {
+      uploadRequests.delete(msgId);
+      let responseData = {};
+      try {
+        responseData = JSON.parse(request.responseText || '{}');
+      } catch {
+        responseData = {};
+      }
+      if (request.status < 200 || request.status >= 300) {
+        reject(new Error(responseData.message || responseData.error || `上传失败（HTTP ${request.status}）`));
         return;
       }
-      clips.value = [response.clip].concat(clips.value.filter((item) => item.id !== response.clip.id));
-      roomExpiresAt.value = response.room?.expiresAt || roomExpiresAt.value;
-      resolve();
-    });
+      resolve(responseData);
+    };
+    request.send(formData);
   });
+}
+
+function cancelUpload(msgId) {
+  cancelledUploads.add(msgId);
+  uploadReaders.get(msgId)?.abort();
+  uploadRequests.get(msgId)?.abort();
+  if (!uploadReaders.has(msgId) && !uploadRequests.has(msgId)) {
+    markUploadFailed(msgId, new Error('已取消传输'));
+  }
+}
+
+async function uploadAndSendFile(file) {
+  if (!file) return;
+  if (file.size > maxFileBytes) {
+    throw new Error(`${file.name} 超过 50MB 单文件限制`);
+  }
+  const msgId = createUploadCard(file);
+
+  try {
+    if (!socketInstance) {
+      throw new Error('尚未连接到房间，请稍后重试');
+    }
+    let response;
+    if (file.type.startsWith('image/') && file.size <= inlineImageThreshold) {
+      const dataUrl = await readFileAsDataUrl(file, (progress) => updateUploadCard(msgId, { transferProgress: progress }), msgId);
+      if (cancelledUploads.has(msgId)) throw new Error('已取消传输');
+      response = await new Promise((resolve, reject) => {
+        socketInstance?.emit('clip:send', {
+          roomId: roomId.value,
+          msgId,
+          clientId: selfClientId,
+          kind: 'image',
+          dataUrl,
+          fileName: file.name,
+          mimeType: file.type,
+          size: file.size,
+          ttlMinutes: roomTtlMinutes.value,
+        }, (acknowledgement) => {
+          if (!acknowledgement?.ok) {
+            reject(new Error(acknowledgement?.error || '图片同步失败'));
+            return;
+          }
+          resolve(acknowledgement);
+        });
+      });
+    } else {
+      const uploadData = await uploadFileWithProgress(file, msgId);
+      if (cancelledUploads.has(msgId)) throw new Error('已取消传输');
+      updateUploadCard(msgId, { transferProgress: 97 });
+      response = await new Promise((resolve, reject) => {
+        socketInstance?.emit('clip:send', {
+          roomId: roomId.value,
+          msgId,
+          clientId: selfClientId,
+          assetId: uploadData?.asset?.assetId,
+          ttlMinutes: roomTtlMinutes.value,
+        }, (acknowledgement) => {
+          if (!acknowledgement?.ok) {
+            reject(new Error(acknowledgement?.error || '文件同步失败'));
+            return;
+          }
+          resolve(acknowledgement);
+        });
+      });
+    }
+    if (cancelledUploads.has(msgId)) throw new Error('已取消传输');
+    if (response.room) syncRoomMeta(response.room);
+    completeUpload(msgId, response.clip, file);
+  } catch (error) {
+    markUploadFailed(msgId, error);
+    throw error;
+  }
 }
 
 async function handleFiles(fileList) {
@@ -750,6 +1123,13 @@ async function copyClip(clip) {
       return;
     }
 
+    if (isTextFile(clip)) {
+      const blob = await getClipBlob(clip);
+      await copyText(await blob.text());
+      showToast('success', '已复制', '文本文件内容已复制到剪贴板。');
+      return;
+    }
+
     if (clip.kind === 'image' && (clip.dataUrl || clip.previewUrl)) {
       const url = clip.dataUrl || getAbsoluteUrl(clip.previewUrl);
       const blob = await fetch(url).then((response) => response.blob());
@@ -767,16 +1147,67 @@ async function copyClip(clip) {
   }
 }
 
-function downloadClip(clip) {
-  const url = getAbsoluteUrl(clip.downloadUrl || clip.previewUrl || clip.dataUrl);
-  if (!url) return;
+async function getClipBlob(clip) {
+  const source = clip.dataUrl || clip.downloadUrl || clip.previewUrl;
+  const url = getAbsoluteUrl(source);
+  if (!url) throw new Error('文件地址不存在');
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`读取文件失败（HTTP ${response.status}）`);
+  return response.blob();
+}
 
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = clip.fileName || 'clipboard-item';
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
+async function previewTextFile(clip) {
+  textPreview.value = {
+    open: true,
+    loading: true,
+    fileName: displayFileName(clip.fileName, 'clipboard-file'),
+    content: '',
+    error: '',
+  };
+  try {
+    const blob = await getClipBlob(clip);
+    const content = await blob.text();
+    textPreview.value = {
+      open: true,
+      loading: false,
+      fileName: displayFileName(clip.fileName, 'clipboard-file'),
+      content,
+      error: '',
+    };
+  } catch (error) {
+    textPreview.value = {
+      ...textPreview.value,
+      loading: false,
+      error: error?.message || '无法读取文本文件',
+    };
+  }
+}
+
+function closeTextPreview() {
+  textPreview.value = {
+    open: false,
+    loading: false,
+    fileName: '',
+    content: '',
+    error: '',
+  };
+}
+
+async function downloadClip(clip) {
+  try {
+    const blob = await getClipBlob(clip);
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = displayFileName(clip.fileName, clip.kind === 'image' ? 'clipboard-image' : 'clipboard-file');
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
+    showToast('success', '下载已开始', `${anchor.download} 正在保存。`);
+  } catch (error) {
+    showToast('error', '下载失败', error?.message || '无法下载原始文件');
+  }
 }
 
 function deleteClip(clip) {
@@ -793,7 +1224,10 @@ function deleteClip(clip) {
 
 function clearRoom() {
   if (!window.confirm('确认清空整个房间吗？此操作会删除所有同步内容。')) return;
-  socketInstance?.emit('room:clear', { roomId: roomId.value }, (response) => {
+  socketInstance?.emit('room:clear', {
+    roomId: roomId.value,
+    hostToken: hostToken.value,
+  }, (response) => {
     if (!response?.ok) {
       showToast('error', '清空失败', response?.error || '无法清空房间');
       return;
@@ -834,8 +1268,8 @@ async function refreshQr() {
 
 function syncRoomMeta(room) {
   if (!room) return;
-  if (room.ttlMinutes) roomTtlMinutes.value = room.ttlMinutes;
-  if (room.expiresAt) roomExpiresAt.value = room.expiresAt;
+  if (Object.prototype.hasOwnProperty.call(room, 'ttlMinutes')) roomTtlMinutes.value = Number(room.ttlMinutes);
+  if (Object.prototype.hasOwnProperty.call(room, 'expiresAt')) roomExpiresAt.value = room.expiresAt;
 }
 
 function resetShareOrigin() {
@@ -843,15 +1277,35 @@ function resetShareOrigin() {
   window.localStorage.removeItem(SHARE_ORIGIN_STORAGE_KEY);
 }
 
+let roomSessionRequestId = 0;
+
 watch(() => route.params.roomId, async (value) => {
+  const requestId = ++roomSessionRequestId;
   const normalized = normalizeRoomId(value);
-  if (normalized) {
-    roomId.value = normalized;
-    connectSocket();
-    await refreshQr();
+  if (!normalized) {
+    const generatedRoomId = generateRoomId();
+    try {
+      await requestRoomSession(generatedRoomId, 'create');
+    } catch (error) {
+      isHost.value = false;
+      hostToken.value = '';
+      showToast('error', '房间创建未确认', error?.message || '请检查后端服务是否正常。');
+    }
+    if (requestId !== roomSessionRequestId) return;
+    await router.replace({ name: 'RealtimeClipboard', params: { roomId: generatedRoomId } });
     return;
   }
-  router.replace({ name: 'RealtimeClipboard', params: { roomId: generateRoomId() } });
+
+  try {
+    await requestRoomSession(normalized, 'join');
+  } catch (error) {
+    isHost.value = false;
+    hostToken.value = '';
+    showToast('error', '房间身份确认失败', error?.message || '请检查后端服务是否正常。');
+  }
+  if (requestId !== roomSessionRequestId) return;
+  connectSocket();
+  await refreshQr();
 }, { immediate: true });
 
 watch(roomUrl, () => {
@@ -885,9 +1339,19 @@ onBeforeUnmount(() => {
   if (textTimer) window.clearTimeout(textTimer);
   if (ticker) window.clearInterval(ticker);
   if (qrStamp) window.clearTimeout(qrStamp);
+  uploadReaders.forEach((reader) => {
+    if (reader.readyState === FileReader.LOADING) reader.abort();
+  });
+  uploadRequests.forEach((request) => request.abort());
+  uploadReaders.clear();
+  uploadRequests.clear();
+  cancelledUploads.clear();
   window.removeEventListener('paste', handleGlobalPaste);
   if (visibilityHandler) document.removeEventListener('visibilitychange', visibilityHandler);
   disconnectSocket();
+  clips.value.forEach((clip) => {
+    if (clip.localPreviewUrl) URL.revokeObjectURL(clip.localPreviewUrl);
+  });
 });
 </script>
 

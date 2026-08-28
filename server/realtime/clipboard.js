@@ -1,11 +1,12 @@
 const crypto = require('crypto');
 const multer = require('multer');
+const { Server: SocketIoServer } = require('socket.io');
 
 const DEFAULT_TTL_MINUTES = Number(process.env.CLIPBOARD_ROOM_TTL_MINUTES || 15);
 const DEFAULT_TTL_MS = DEFAULT_TTL_MINUTES * 60 * 1000;
 const MAX_CLIPS = Number(process.env.CLIPBOARD_MAX_ITEMS || 20);
 const MAX_TEXT_LENGTH = Number(process.env.CLIPBOARD_MAX_TEXT_LENGTH || 20000);
-const MAX_UPLOAD_BYTES = Number(process.env.CLIPBOARD_UPLOAD_MAX_BYTES || 20 * 1024 * 1024);
+const MAX_UPLOAD_BYTES = Number(process.env.CLIPBOARD_UPLOAD_MAX_BYTES || 50 * 1024 * 1024);
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -13,6 +14,7 @@ const upload = multer({
 });
 
 const rooms = new Map();
+let socketServer = null;
 
 function randomRoomId(length = 6) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -25,6 +27,21 @@ function randomRoomId(length = 6) {
   return roomId.slice(0, length);
 }
 
+function createHostToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function hasValidHostToken(room, candidate) {
+  const expected = String(room?.hostToken || '');
+  const received = String(candidate || '');
+  if (!expected || !received) return false;
+
+  const expectedBuffer = Buffer.from(expected);
+  const receivedBuffer = Buffer.from(received);
+  if (expectedBuffer.length !== receivedBuffer.length) return false;
+  return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+}
+
 function normalizeRoomId(value) {
   const candidate = String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (candidate.length >= 4 && candidate.length <= 24) return candidate.slice(0, 24);
@@ -32,17 +49,31 @@ function normalizeRoomId(value) {
 }
 
 function parseTtlMinutes(value, fallback = DEFAULT_TTL_MINUTES) {
+  if (String(value ?? '').trim() === '0') return 0;
   const ttlMinutes = Number.parseInt(String(value ?? ''), 10);
   if (Number.isFinite(ttlMinutes) && ttlMinutes > 0 && ttlMinutes <= 240) return ttlMinutes;
   return fallback;
 }
 
 function ttlMinutesToMs(ttlMinutes) {
-  return parseTtlMinutes(ttlMinutes) * 60 * 1000;
+  const normalized = parseTtlMinutes(ttlMinutes);
+  return normalized === 0 ? 0 : normalized * 60 * 1000;
 }
 
 function safeFileName(fileName = 'file') {
   return String(fileName).replace(/[\r\n"]/g, '').trim().slice(0, 180) || 'file';
+}
+
+function normalizeClientId(value) {
+  const candidate = String(value || '').trim();
+  if (!candidate || candidate.length > 120) return '';
+  return candidate.replace(/[^a-zA-Z0-9._:-]/g, '');
+}
+
+function normalizeMessageId(value) {
+  const candidate = String(value || '').trim();
+  if (!candidate || candidate.length > 120) return '';
+  return candidate.replace(/[^a-zA-Z0-9._:-]/g, '');
 }
 
 function dataUrlToBytes(dataUrl = '') {
@@ -54,6 +85,12 @@ function makeDownloadUrl(roomId, assetId, download = false) {
   return '/api/clipboard/upload/' + encodeURIComponent(roomId) + '/' + encodeURIComponent(assetId) + (download ? '?download=1' : '');
 }
 
+function contentDispositionFileName(fileName) {
+  const safeName = safeFileName(fileName);
+  const asciiFallback = safeName.replace(/[^\x20-\x7E]/g, '_').replace(/[\\"]/g, '_') || 'download';
+  return 'attachment; filename="' + asciiFallback + '"; filename*=UTF-8\'\'' + encodeURIComponent(safeName);
+}
+
 function clipSummary(room) {
   return {
     roomId: room.roomId,
@@ -62,7 +99,7 @@ function clipSummary(room) {
     expiresAt: room.expiresAt,
     lastActivityAt: room.lastActivityAt,
     clipCount: room.clips.length,
-    clientCount: room.clients.size,
+    clientCount: room.clients.size + room.socketClients.size,
     maxClips: MAX_CLIPS,
   };
 }
@@ -81,6 +118,11 @@ function writeSse(res, event, data) {
 
 function scheduleExpiry(room) {
   if (room.timer) clearTimeout(room.timer);
+  if (!room.ttlMs || !Number.isFinite(room.ttlMs)) {
+    room.timer = null;
+    room.expiresAt = null;
+    return;
+  }
   room.expiresAt = Date.now() + room.ttlMs;
   room.timer = setTimeout(() => expireRoom(room.roomId, 'expired'), room.ttlMs);
   room.timer.unref?.();
@@ -89,9 +131,11 @@ function scheduleExpiry(room) {
 function createRoom(roomId, ttlMinutes = DEFAULT_TTL_MINUTES) {
   const room = {
     roomId,
+    hostToken: createHostToken(),
     clips: [],
     assets: new Map(),
     clients: new Map(),
+    socketClients: new Set(),
     ttlMs: ttlMinutesToMs(ttlMinutes),
     lastActivityAt: Date.now(),
     expiresAt: Date.now() + ttlMinutesToMs(ttlMinutes),
@@ -108,8 +152,9 @@ function ensureRoom(roomId, ttlMinutes = DEFAULT_TTL_MINUTES) {
 }
 
 function touchRoom(room, ttlMinutes) {
-  if (Number.isFinite(Number(ttlMinutes)) && Number(ttlMinutes) > 0) {
-    room.ttlMs = ttlMinutesToMs(ttlMinutes);
+  if (ttlMinutes !== undefined && ttlMinutes !== null && String(ttlMinutes).trim() !== '') {
+    const normalizedTtl = parseTtlMinutes(ttlMinutes, -1);
+    if (normalizedTtl >= 0) room.ttlMs = ttlMinutesToMs(normalizedTtl);
   }
   room.lastActivityAt = Date.now();
   scheduleExpiry(room);
@@ -161,9 +206,11 @@ function expireRoom(roomId, reason = 'expired') {
   if (!room) return;
   if (room.timer) clearTimeout(room.timer);
   const payload = { roomId: room.roomId, reason, clearedAt: Date.now() };
+  socketServer?.to(room.roomId).emit('room:cleared', payload);
   closeRoomClients(room, payload);
   room.assets.clear();
   room.clips.length = 0;
+  room.socketClients.clear();
   rooms.delete(roomId);
 }
 
@@ -189,13 +236,15 @@ function storeAsset(room, file) {
   return asset;
 }
 
-function buildTextClip(room, payload) {
+function buildTextClip(room, payload, msgId, clientId) {
   const text = String(payload?.text || '').trimEnd();
   if (!text) throw new Error('EMPTY_TEXT');
   const normalizedText = text.slice(0, MAX_TEXT_LENGTH);
   return {
     id: crypto.randomUUID(),
+    msgId,
     roomId: room.roomId,
+    clientId,
     kind: 'text',
     text: normalizedText,
     textLength: normalizedText.length,
@@ -204,7 +253,7 @@ function buildTextClip(room, payload) {
   };
 }
 
-function buildInlineClip(room, payload) {
+function buildInlineClip(room, payload, msgId, clientId) {
   const dataUrl = String(payload?.dataUrl || '');
   if (!dataUrl.startsWith('data:')) throw new Error('INVALID_DATA_URL');
   const mimeType = String(payload?.mimeType || dataUrl.slice(5, dataUrl.indexOf(';')) || 'application/octet-stream');
@@ -212,7 +261,9 @@ function buildInlineClip(room, payload) {
   const fileName = safeFileName(payload?.fileName || (isImage ? 'image.png' : 'clipboard-file'));
   return {
     id: crypto.randomUUID(),
+    msgId,
     roomId: room.roomId,
+    clientId,
     kind: isImage ? 'image' : 'file',
     fileName,
     mimeType,
@@ -224,10 +275,12 @@ function buildInlineClip(room, payload) {
   };
 }
 
-function buildAssetClip(room, asset) {
+function buildAssetClip(room, asset, msgId, clientId) {
   return {
     id: crypto.randomUUID(),
+    msgId,
     roomId: room.roomId,
+    clientId,
     kind: asset.isImage ? 'image' : 'file',
     assetId: asset.assetId,
     fileName: asset.fileName,
@@ -247,25 +300,30 @@ function removeClip(room, clipId) {
   return removed;
 }
 
-function resolveClip(room, payload) {
+function resolveClip(room, payload, msgId, clientId) {
   if (!payload || typeof payload !== 'object') throw new Error('INVALID_PAYLOAD');
   if (payload.assetId) {
     const asset = room.assets.get(String(payload.assetId));
     if (!asset) throw new Error('ASSET_NOT_FOUND');
-    return buildAssetClip(room, asset);
+    return buildAssetClip(room, asset, msgId, clientId);
   }
-  if (payload.dataUrl) return buildInlineClip(room, payload);
-  if (String(payload.kind || '').toLowerCase() === 'text' || payload.text) return buildTextClip(room, payload);
+  if (payload.dataUrl) return buildInlineClip(room, payload, msgId, clientId);
+  if (String(payload.kind || '').toLowerCase() === 'text' || payload.text) return buildTextClip(room, payload, msgId, clientId);
   throw new Error('UNSUPPORTED_CLIP');
 }
 
 function handleJoin(room, payload) {
-  const ttlMinutes = parseTtlMinutes(payload?.ttlMinutes, DEFAULT_TTL_MINUTES);
-  touchRoom(room, ttlMinutes);
-  return { ok: true, room: clipSummary(room), clips: room.clips };
+  touchRoom(room);
+  return {
+    ok: true,
+    role: hasValidHostToken(room, payload?.hostToken) ? 'host' : 'guest',
+    room: clipSummary(room),
+    clips: room.clips,
+  };
 }
 
 function handleUpdateSettings(room, payload) {
+  if (!hasValidHostToken(room, payload?.hostToken)) throw new Error('HOST_AUTH_REQUIRED');
   const ttlMinutes = parseTtlMinutes(payload?.ttlMinutes, Math.round(room.ttlMs / 60000));
   touchRoom(room, ttlMinutes);
   const roomState = clipSummary(room);
@@ -274,12 +332,17 @@ function handleUpdateSettings(room, payload) {
 }
 
 function handleClipSend(room, payload, clientId) {
-  const ttlMinutes = parseTtlMinutes(payload?.ttlMinutes, Math.round(room.ttlMs / 60000));
-  const clip = resolveClip(room, payload);
+  const msgId = normalizeMessageId(payload?.msgId) || crypto.randomUUID();
+  const senderId = normalizeClientId(payload?.clientId) || normalizeClientId(clientId);
+  const existingClip = room.clips.find((item) => item.msgId === msgId);
+  if (existingClip) {
+    return { ok: true, duplicate: true, room: clipSummary(room), clip: existingClip };
+  }
+  const clip = resolveClip(room, payload, msgId, senderId);
   clip.createdAt = Date.now();
   room.clips.push(clip);
   trimClips(room);
-  touchRoom(room, ttlMinutes);
+  touchRoom(room);
   const roomState = clipSummary(room);
   broadcastRoom(room, 'clip:sync', { room: roomState, clip }, clientId);
   return { ok: true, room: roomState, clip };
@@ -294,13 +357,142 @@ function handleClipDelete(room, payload) {
   return { ok: true, room: roomState };
 }
 
-function handleRoomClear(room) {
+function handleRoomClear(room, payload) {
+  if (!hasValidHostToken(room, payload?.hostToken)) throw new Error('HOST_AUTH_REQUIRED');
   const roomId = room.roomId;
   clearRoom(roomId, 'manual');
   return { ok: true, roomId };
 }
 
-function registerClipboardRealtime(app) {
+function handleRoomSession(payload) {
+  const roomId = normalizeRoomId(payload?.roomId);
+  const intent = String(payload?.intent || '').toLowerCase() === 'create' ? 'create' : 'join';
+  const ttlMinutes = parseTtlMinutes(payload?.ttlMinutes, DEFAULT_TTL_MINUTES);
+  let room = rooms.get(roomId);
+  const created = !room;
+
+  if (!room) room = createRoom(roomId, ttlMinutes);
+  else touchRoom(room);
+
+  const isHost = hasValidHostToken(room, payload?.hostToken) || (created && intent === 'create');
+  const result = {
+    ok: true,
+    role: isHost ? 'host' : 'guest',
+    room: clipSummary(room),
+  };
+
+  if (isHost) result.hostToken = room.hostToken;
+  return result;
+}
+
+function registerClipboardRealtime(app, httpServer) {
+  if (httpServer && !socketServer) {
+    socketServer = new SocketIoServer(httpServer, {
+      cors: { origin: '*', methods: ['GET', 'POST'] },
+      transports: ['websocket', 'polling'],
+    });
+
+    socketServer.on('connection', (socket) => {
+      socket.data.clientId = normalizeClientId(
+        socket.handshake.auth?.clientId
+        || socket.handshake.query?.clientId
+        || socket.id,
+      ) || socket.id;
+
+      const getSocketRoom = (payload = {}) => {
+        const roomSource = payload.roomId || socket.data.roomId;
+        if (!roomSource) throw new Error('缺少房间号');
+        const roomId = normalizeRoomId(roomSource);
+        if (!socket.data.roomId || socket.data.roomId !== roomId) throw new Error('尚未加入该房间');
+        const room = rooms.get(roomId);
+        if (!room) throw new Error('房间不存在或已过期');
+        return room;
+      };
+
+      socket.on('room:join', (payload = {}, acknowledge) => {
+        try {
+          if (!payload.roomId) throw new Error('缺少房间号');
+          const roomId = normalizeRoomId(payload.roomId);
+          if (socket.data.roomId && socket.data.roomId !== roomId) {
+            const previousRoom = rooms.get(socket.data.roomId);
+            previousRoom?.socketClients.delete(socket.id);
+            socket.leave(socket.data.roomId);
+          }
+
+          const room = ensureRoom(roomId);
+          socket.join(roomId);
+          room.socketClients.add(socket.id);
+          socket.data.roomId = roomId;
+          socket.data.hostToken = String(payload.hostToken || '');
+          const result = handleJoin(room, payload);
+          socket.emit('clip:init', { room: result.room, clips: result.clips });
+          if (typeof acknowledge === 'function') acknowledge(result);
+        } catch (error) {
+          if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
+        }
+      });
+
+      socket.on('clip:send', (payload = {}, acknowledge) => {
+        try {
+          const room = getSocketRoom(payload);
+          const result = handleClipSend(room, {
+            ...payload,
+            clientId: payload.clientId || socket.data.clientId,
+          }, socket.data.clientId);
+          if (result.ok && !result.duplicate) {
+            socket.to(room.roomId).emit('clip:sync', { room: result.room, clip: result.clip });
+          }
+          if (typeof acknowledge === 'function') acknowledge(result);
+        } catch (error) {
+          if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
+        }
+      });
+
+      socket.on('clip:delete', (payload = {}, acknowledge) => {
+        try {
+          const room = getSocketRoom(payload);
+          const result = handleClipDelete(room, payload);
+          socket.to(room.roomId).emit('clip:delete', { room: result.room, clipId: payload.clipId });
+          if (typeof acknowledge === 'function') acknowledge(result);
+        } catch (error) {
+          if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
+        }
+      });
+
+      socket.on('room:update-settings', (payload = {}, acknowledge) => {
+        try {
+          const room = getSocketRoom(payload);
+          const result = handleUpdateSettings(room, {
+            ...payload,
+            hostToken: payload.hostToken || socket.data.hostToken,
+          });
+          socketServer.to(room.roomId).emit('room:settings', result.room);
+          if (typeof acknowledge === 'function') acknowledge(result);
+        } catch (error) {
+          if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
+        }
+      });
+
+      socket.on('room:clear', (payload = {}, acknowledge) => {
+        try {
+          const room = getSocketRoom(payload);
+          const result = handleRoomClear(room, {
+            ...payload,
+            hostToken: payload.hostToken || socket.data.hostToken,
+          });
+          if (typeof acknowledge === 'function') acknowledge(result);
+        } catch (error) {
+          if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
+        }
+      });
+
+      socket.on('disconnect', () => {
+        const room = rooms.get(socket.data.roomId);
+        room?.socketClients.delete(socket.id);
+      });
+    });
+  }
+
   app.get('/api/clipboard/health', (req, res) => {
     res.json({
       status: 'ok',
@@ -308,6 +500,15 @@ function registerClipboardRealtime(app) {
       maxClips: MAX_CLIPS,
       defaultTtlMinutes: DEFAULT_TTL_MINUTES,
     });
+  });
+
+  app.post('/api/clipboard/room/session', (req, res) => {
+    try {
+      res.json(handleRoomSession(req.body || {}));
+    } catch (error) {
+      console.error('[clipboard/room/session] Error:', error.message);
+      res.status(400).json({ ok: false, error: error.message });
+    }
   });
 
   app.get('/api/clipboard/stream', (req, res) => {
@@ -320,9 +521,9 @@ function registerClipboardRealtime(app) {
 
       const roomId = normalizeRoomId(roomSource);
       const clientId = String(clientSource || crypto.randomUUID());
-      const ttlMinutes = parseTtlMinutes(req.query.ttlMinutes, DEFAULT_TTL_MINUTES);
-      const room = ensureRoom(roomId, ttlMinutes);
-      touchRoom(room, ttlMinutes);
+      const requestedTtl = req.query.ttlMinutes;
+      const room = ensureRoom(roomId, requestedTtl);
+      touchRoom(room);
 
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
       res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -350,7 +551,8 @@ function registerClipboardRealtime(app) {
       const clientId = String(body.clientId || crypto.randomUUID());
       const event = String(body.event || '');
       const payload = body.payload || {};
-      const room = ensureRoom(roomId, payload.ttlMinutes || body.ttlMinutes || DEFAULT_TTL_MINUTES);
+      const requestedTtl = payload.ttlMinutes ?? body.ttlMinutes ?? DEFAULT_TTL_MINUTES;
+      const room = ensureRoom(roomId, requestedTtl);
 
       let result;
       switch (event) {
@@ -367,7 +569,7 @@ function registerClipboardRealtime(app) {
           result = handleClipDelete(room, payload);
           break;
         case 'room:clear':
-          result = handleRoomClear(room);
+          result = handleRoomClear(room, payload);
           break;
         default:
           throw new Error('UNSUPPORTED_EVENT');
@@ -393,8 +595,9 @@ function registerClipboardRealtime(app) {
       }
 
       const roomId = normalizeRoomId(roomSource);
-      const room = ensureRoom(roomId, req.body?.ttlMinutes || req.query?.ttlMinutes);
-      touchRoom(room, req.body?.ttlMinutes || req.query?.ttlMinutes);
+      const requestedTtl = req.body?.ttlMinutes ?? req.query?.ttlMinutes;
+      const room = ensureRoom(roomId, requestedTtl);
+      touchRoom(room);
       const asset = storeAsset(room, file);
 
       res.json({
@@ -431,7 +634,9 @@ function registerClipboardRealtime(app) {
 
     res.setHeader('Content-Type', asset.mimeType);
     res.setHeader('Content-Length', String(asset.size));
-    res.setHeader('Content-Disposition', disposition + '; filename*=UTF-8\'\'' + encodedFileName);
+    res.setHeader('Content-Disposition', disposition === 'attachment'
+      ? contentDispositionFileName(asset.fileName)
+      : 'inline; filename*=UTF-8\'\'' + encodedFileName);
     res.send(asset.buffer);
   });
 

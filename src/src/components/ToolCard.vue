@@ -1,6 +1,6 @@
 <template>
   <router-link :to="tool.route"
-    class="group relative block p-5 rounded-[28px] transition-all duration-300 liquid-glass hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(0,0,0,0.60)]"
+    class="group relative block p-5 rounded-[28px] motion-interactive liquid-glass hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(0,0,0,0.42)]"
     :class="{ 'opacity-50 hover:opacity-65 border-dashed': tool.status === 'coming_soon' }">
     <span v-if="tool.isNew"
       class="absolute top-3 right-3 px-2.5 py-0.5 text-[0.625rem] font-semibold tracking-wider rounded-full bg-ios-blue/20 text-ios-blue border border-ios-blue/30">
@@ -10,7 +10,7 @@
       class="absolute top-3 right-3 px-2.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wider rounded-full bg-ios-orange/20 text-ios-orange border border-ios-orange/30">
       即将上线
     </span>
-    <div class="w-10 h-10 rounded-[13px] flex items-center justify-center mb-4 transition-all duration-300 group-hover:scale-105 shadow-sm"
+    <div class="w-10 h-10 rounded-[13px] flex items-center justify-center mb-4 transition-transform duration-200 ease-out group-hover:scale-[1.02] shadow-sm"
       :class="iconBgClass">
       <component :is="iconComp" class="w-5 h-5" :class="iconColorClass" />
     </div>

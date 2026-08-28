@@ -21,10 +21,10 @@
     </div>
   </section>
 
-  <section id="tools" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 relative z-[1]">
+  <section id="tools" class="home-tools max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 relative z-[1]">
     <div class="flex flex-wrap items-center gap-2 mb-8">
       <button v-for="cat in categories" :key="cat.id" @click="activeCategory = cat.id"
-        class="px-4 py-2 rounded-full text-[0.8125rem] font-medium tracking-[-0.01em] transition-all active:scale-[0.97] text-glass-sm"
+        class="px-4 py-2 rounded-full text-[0.8125rem] font-medium tracking-[-0.01em] motion-interactive active:scale-[0.97] text-glass-sm"
         :class="activeCategory === cat.id
           ? 'bg-ios-blue text-white shadow-md shadow-ios-blue/20'
           : 'liquid-glass-inset text-zinc-300'">
@@ -84,3 +84,21 @@ useHead({ title: 'proHub - 全能在线工具箱' });
 const activeCategory = ref('all');
 const filteredTools = computed(() => getToolsByCategory(activeCategory.value));
 </script>
+
+<style scoped>
+.home-tools {
+  min-height: 800px;
+}
+
+@media (max-width: 1023px) {
+  .home-tools {
+    min-height: 1250px;
+  }
+}
+
+@media (max-width: 639px) {
+  .home-tools {
+    min-height: 2150px;
+  }
+}
+</style>

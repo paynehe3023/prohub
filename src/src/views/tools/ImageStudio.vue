@@ -206,12 +206,22 @@
                     v-if="exifDatePickerOpen"
                     role="dialog"
                     aria-label="选择拍摄时间"
-                    class="absolute left-0 top-full z-[10000] mt-2 w-[min(23rem,calc(100vw-2rem))] rounded-2xl border border-white/15 bg-zinc-950/98 p-3 shadow-2xl backdrop-blur-2xl"
+                    class="exif-date-picker absolute left-0 top-full z-[10000] mt-2 w-[min(19rem,calc(100vw-1.5rem))] rounded-2xl p-2.5"
                     @click.stop
                   >
                     <div class="flex items-center justify-between gap-2">
                       <button type="button" class="rounded-lg px-2 py-1 text-lg text-zinc-300 hover:bg-white/10 hover:text-white" aria-label="上个月" @click="changeExifPickerMonth(-1)">‹</button>
-                      <span class="text-sm font-semibold text-white">{{ exifPickerMonthLabel }}</span>
+                      <div class="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+                        <select
+                          :value="exifPickerYear"
+                          aria-label="选择年份"
+                          class="liquid-glass-select h-8 min-w-0 flex-1 rounded-lg px-2 py-1 text-xs font-semibold text-white outline-none"
+                          @change="changeExifPickerYear"
+                        >
+                          <option v-for="year in exifPickerYearOptions" :key="year" :value="year">{{ year }}年</option>
+                        </select>
+                        <span class="shrink-0 text-sm font-semibold text-white">{{ exifPickerMonthLabel }}</span>
+                      </div>
                       <button type="button" class="rounded-lg px-2 py-1 text-lg text-zinc-300 hover:bg-white/10 hover:text-white" aria-label="下个月" @click="changeExifPickerMonth(1)">›</button>
                     </div>
                     <div class="mt-3 grid grid-cols-7 gap-1 text-center text-[0.625rem] text-zinc-500">
@@ -222,7 +232,7 @@
                         v-for="day in exifPickerCalendarDays"
                         :key="day.dateKey"
                         type="button"
-                        class="aspect-square rounded-lg text-xs transition-colors"
+                        class="h-7 rounded-lg text-[0.6875rem] transition-colors"
                         :class="[
                           day.currentMonth ? 'text-zinc-200' : 'text-zinc-600',
                           day.dateKey === exifPickerSelectedDateKey ? 'bg-ios-blue text-white shadow-lg shadow-ios-blue/20' : 'hover:bg-white/10 hover:text-white',
@@ -232,27 +242,27 @@
                         {{ day.day }}
                       </button>
                     </div>
-                    <div class="mt-3 border-t border-white/10 pt-3">
+                    <div class="mt-2 border-t border-white/10 pt-2">
                       <p class="mb-2 text-[0.6875rem] text-zinc-500">选择时间</p>
                       <div class="grid grid-cols-3 gap-2">
                         <label class="text-[0.625rem] text-zinc-500">时
-                          <select :value="exifPickerTime.hours" class="liquid-glass-select mt-1 w-full rounded-lg px-2 py-1.5 text-xs text-white outline-none" @change="updateExifPickerTime('hours', $event)">
+                          <select :value="exifPickerTime.hours" class="liquid-glass-select mt-1 w-full rounded-lg px-2 py-1 text-xs text-white outline-none" @change="updateExifPickerTime('hours', $event)">
                             <option v-for="hour in 24" :key="hour - 1" :value="hour - 1">{{ String(hour - 1).padStart(2, '0') }}</option>
                           </select>
                         </label>
                         <label class="text-[0.625rem] text-zinc-500">分
-                          <select :value="exifPickerTime.minutes" class="liquid-glass-select mt-1 w-full rounded-lg px-2 py-1.5 text-xs text-white outline-none" @change="updateExifPickerTime('minutes', $event)">
+                          <select :value="exifPickerTime.minutes" class="liquid-glass-select mt-1 w-full rounded-lg px-2 py-1 text-xs text-white outline-none" @change="updateExifPickerTime('minutes', $event)">
                             <option v-for="minute in 60" :key="minute - 1" :value="minute - 1">{{ String(minute - 1).padStart(2, '0') }}</option>
                           </select>
                         </label>
                         <label class="text-[0.625rem] text-zinc-500">秒
-                          <select :value="exifPickerTime.seconds" class="liquid-glass-select mt-1 w-full rounded-lg px-2 py-1.5 text-xs text-white outline-none" @change="updateExifPickerTime('seconds', $event)">
+                          <select :value="exifPickerTime.seconds" class="liquid-glass-select mt-1 w-full rounded-lg px-2 py-1 text-xs text-white outline-none" @change="updateExifPickerTime('seconds', $event)">
                             <option v-for="second in 60" :key="second - 1" :value="second - 1">{{ String(second - 1).padStart(2, '0') }}</option>
                           </select>
                         </label>
                       </div>
                     </div>
-                    <div class="mt-3 flex items-center justify-between gap-2">
+                    <div class="mt-2 flex items-center justify-between gap-2">
                       <button type="button" class="rounded-lg px-2 py-1.5 text-xs text-zinc-400 hover:bg-white/10 hover:text-white" @click="clearExifPicker">清除</button>
                       <button type="button" class="rounded-lg bg-ios-blue px-3 py-1.5 text-xs text-white hover:bg-ios-blue/90" @click="confirmExifPicker">完成</button>
                     </div>
@@ -311,16 +321,18 @@
           <div class="min-h-[360px] rounded-[20px] bg-black/20 border border-white/10 flex items-center justify-center overflow-hidden p-3">
             <div v-if="!currentImage" class="text-center text-zinc-500 text-sm">导入图片后开始处理</div>
             <img v-else-if="viewMode === 'processed' && hasCurrentProcessed" :src="processedUrl" alt="处理结果" class="max-w-full max-h-[600px] object-contain" />
-            <canvas
-              v-else
-              ref="previewCanvas"
-              class="max-w-full max-h-[600px] object-contain touch-none select-none"
-              :class="activeTab === 'privacy' || activeTab === 'resize' ? 'cursor-crosshair' : 'cursor-default'"
-              @pointerdown="onPreviewPointerDown"
-              @pointermove="onPreviewPointerMove"
-              @pointerup="onPreviewPointerUp"
-              @pointercancel="onPreviewPointerUp"
-            />
+            <div v-else class="relative inline-block max-w-full max-h-[600px] align-middle">
+              <canvas ref="baseCanvas" class="block max-w-full max-h-[600px] object-contain pointer-events-none select-none" />
+              <canvas
+                ref="previewCanvas"
+                class="absolute inset-0 block w-full h-full touch-none select-none"
+                :class="activeTab === 'privacy' || activeTab === 'resize' ? 'cursor-crosshair' : 'cursor-default'"
+                @pointerdown="onPreviewPointerDown"
+                @pointermove="onPreviewPointerMove"
+                @pointerup="onPreviewPointerUp"
+                @pointercancel="onPreviewPointerUp"
+              />
+            </div>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 text-xs">
@@ -396,6 +408,17 @@ interface MaskInteractionState {
   initialMasks: Mask[];
   startPointerAngle: number;
 }
+interface PreviewLayerCache {
+  imageId: string;
+  width: number;
+  height: number;
+  sourceCanvas: HTMLCanvasElement;
+  sourceContext: CanvasRenderingContext2D;
+  effectCanvas: HTMLCanvasElement;
+  effectContext: CanvasRenderingContext2D;
+  watermarkTile: HTMLCanvasElement | null;
+  watermarkSignature: string;
+}
 interface ImageEditState {
   targetKB: number;
   selectedPreset: string;
@@ -463,6 +486,7 @@ const errorMessage = ref('');
 const toastMessage = ref('');
 const viewMode = ref<'original' | 'editing' | 'processed'>('original');
 const previewCanvas = ref<HTMLCanvasElement | null>(null);
+const baseCanvas = ref<HTMLCanvasElement | null>(null);
 const targetKB = ref(200);
 const selectedPreset = ref('free');
 const keepAspect = ref(true);
@@ -500,6 +524,11 @@ const processedWidth = ref(0);
 const processedHeight = ref(0);
 const gridTiles = ref<GridTile[]>([]);
 let restoringState = false;
+let previewLayerCache: PreviewLayerCache | null = null;
+let previewFrameHandle: number | null = null;
+let pendingPointerPosition: { clientX: number; clientY: number } | null = null;
+let previewPointerBounds: { left: number; top: number; width: number; height: number } | null = null;
+let baseCanvasImageId: string | null = null;
 
 const currentImage = computed(() => files.value.find((image) => image.id === selectedId.value) || null);
 const selectedPresetData = computed(() => presets.find((preset) => preset.id === selectedPreset.value) || null);
@@ -514,9 +543,17 @@ const hasCurrentProcessed = computed(() => Boolean(
 ));
 const selectedMask = computed(() => selectedMaskIndex.value === null ? null : masks.value[selectedMaskIndex.value] || null);
 const exifEditDateDisplay = computed(() => formatDateTimeForDisplay(exifEditDate.value));
+const exifPickerYear = computed(() => {
+  const match = exifPickerMonth.value.match(/^(\d{4})-(\d{2})$/);
+  return match ? Number(match[1]) : new Date().getFullYear();
+});
+const exifPickerYearOptions = computed(() => {
+  const currentYear = new Date().getFullYear();
+  return Array.from({ length: currentYear + 11 - 1900 }, (_, index) => 1900 + index);
+});
 const exifPickerMonthLabel = computed(() => {
   const match = exifPickerMonth.value.match(/^(\d{4})-(\d{2})$/);
-  return match ? `${match[1]}年${Number(match[2])}月` : '选择日期';
+  return match ? `${Number(match[2])}月` : '选择日期';
 });
 const exifPickerCalendarDays = computed<ExifPickerCalendarDay[]>(() => {
   const match = exifPickerMonth.value.match(/^(\d{4})-(\d{2})$/);
@@ -763,6 +800,9 @@ function disposeImageState(image: StudioImage): void {
 }
 
 function initializeImageState(): void {
+  invalidatePreviewLayerCache();
+  previewPointerBounds = null;
+  pendingPointerPosition = null;
   const image = currentImage.value;
   temporaryMaskRect.value = null;
   temporaryCropRect.value = null;
@@ -772,7 +812,7 @@ function initializeImageState(): void {
   maskInteraction.value = null;
   if (image) loadImageState(image);
   else resetEditorRefs();
-  nextTick(drawPreview);
+  nextTick(schedulePreviewDraw);
 }
 
 function selectImage(imageId: string): void {
@@ -861,7 +901,7 @@ async function addFiles(fileList: File[]): Promise<void> {
     saveImageState(selectedId.value);
     selectedId.value = addedImages[0].id;
   }
-  if (currentImage.value) nextTick(drawPreview);
+  if (currentImage.value) nextTick(schedulePreviewDraw);
 }
 
 function onFilesSelected(event: Event): void {
@@ -880,7 +920,7 @@ function switchTab(tab: StudioTab): void {
   if (tab !== 'convert') exifDatePickerOpen.value = false;
   viewMode.value = 'editing';
   if (tab === 'resize' && currentImage.value && !cropRect.value) cropRect.value = fullImageRect();
-  nextTick(drawPreview);
+  nextTick(schedulePreviewDraw);
 }
 
 function applyPreset(): void {
@@ -890,13 +930,13 @@ function applyPreset(): void {
     cropRect.value = fullImageRect();
     outputWidth.value = image?.naturalWidth || 0;
     outputHeight.value = image?.naturalHeight || 0;
-    nextTick(drawPreview);
+    nextTick(schedulePreviewDraw);
     return;
   }
   outputWidth.value = preset.width;
   outputHeight.value = preset.height;
   cropRect.value = centerCropForAspect(preset.width / preset.height);
-  nextTick(drawPreview);
+  nextTick(schedulePreviewDraw);
 }
 
 function resizeAspect(): number {
@@ -956,19 +996,23 @@ function resetCrop(): void {
     outputWidth.value = currentImage.value.naturalWidth;
     outputHeight.value = currentImage.value.naturalHeight;
   }
-  nextTick(drawPreview);
+  nextTick(schedulePreviewDraw);
 }
 
-function getCanvasPoint(event: PointerEvent): Point | null {
+function getCanvasPointFromClient(clientX: number, clientY: number): Point | null {
   const canvas = previewCanvas.value;
   const image = currentImage.value;
   if (!canvas || !image) return null;
-  const bounds = canvas.getBoundingClientRect();
+  const bounds = previewPointerBounds || canvas.getBoundingClientRect();
   if (!bounds.width || !bounds.height) return null;
   return {
-    x: clamp((event.clientX - bounds.left) * canvas.width / bounds.width, 0, image.naturalWidth),
-    y: clamp((event.clientY - bounds.top) * canvas.height / bounds.height, 0, image.naturalHeight),
+    x: clamp((clientX - bounds.left) * canvas.width / bounds.width, 0, image.naturalWidth),
+    y: clamp((clientY - bounds.top) * canvas.height / bounds.height, 0, image.naturalHeight),
   };
+}
+
+function getCanvasPoint(event: PointerEvent): Point | null {
+  return getCanvasPointFromClient(event.clientX, event.clientY);
 }
 
 function rectFromPoints(start: Point, end: Point, aspect?: number): Rect {
@@ -1116,7 +1160,7 @@ function deleteMaskAt(index: number): void {
   } else if (selectedMaskIndex.value !== null && selectedMaskIndex.value > index) {
     selectedMaskIndex.value -= 1;
   }
-  nextTick(drawPreview);
+  schedulePreviewDraw();
 }
 
 function onPreviewPointerDown(event: PointerEvent): void {
@@ -1125,7 +1169,7 @@ function onPreviewPointerDown(event: PointerEvent): void {
   if (!point) return;
   if (viewMode.value === 'original') {
     viewMode.value = 'editing';
-    drawPreview();
+    schedulePreviewDraw();
   }
   if (activeTab.value === 'resize') {
     dragStart.value = point;
@@ -1161,7 +1205,7 @@ function onPreviewPointerDown(event: PointerEvent): void {
           initialMasks: cloneMasks(masks.value),
           startPointerAngle: 0,
         };
-        drawPreview();
+         schedulePreviewDraw();
       } else {
         selectedMaskIndex.value = null;
         dragStart.value = point;
@@ -1170,12 +1214,15 @@ function onPreviewPointerDown(event: PointerEvent): void {
       }
     }
   }
-  (event.currentTarget as HTMLCanvasElement).setPointerCapture(event.pointerId);
+  const canvas = event.currentTarget as HTMLCanvasElement;
+  const bounds = canvas.getBoundingClientRect();
+  previewPointerBounds = { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height };
+  canvas.setPointerCapture(event.pointerId);
 }
 
-function onPreviewPointerMove(event: PointerEvent): void {
+function applyPreviewPointerMove(clientX: number, clientY: number): void {
   if (!dragStart.value || !interactionMode.value) return;
-  const point = getCanvasPoint(event);
+  const point = getCanvasPointFromClient(clientX, clientY);
   if (!point) return;
   if (interactionMode.value === 'crop' || interactionMode.value === 'draw-mask') {
     const aspect = interactionMode.value === 'crop' && selectedPresetData.value ? selectedPresetData.value.width / selectedPresetData.value.height : undefined;
@@ -1207,10 +1254,19 @@ function onPreviewPointerMove(event: PointerEvent): void {
     }
     masks.value[interaction.index] = nextMask;
   }
-  drawPreview();
+}
+
+function onPreviewPointerMove(event: PointerEvent): void {
+  if (!dragStart.value || !interactionMode.value) return;
+  pendingPointerPosition = { clientX: event.clientX, clientY: event.clientY };
+  schedulePreviewDraw();
 }
 
 function onPreviewPointerUp(event?: PointerEvent): void {
+  if (pendingPointerPosition) {
+    applyPreviewPointerMove(pendingPointerPosition.clientX, pendingPointerPosition.clientY);
+    pendingPointerPosition = null;
+  }
   if (interactionMode.value === 'crop' && temporaryCropRect.value && temporaryCropRect.value.width > 2 && temporaryCropRect.value.height > 2) cropRect.value = temporaryCropRect.value;
   if (interactionMode.value === 'crop' && cropRect.value) syncResizeDimensionsToCrop();
   if (interactionMode.value === 'draw-mask' && temporaryMaskRect.value && temporaryMaskRect.value.width > 2 && temporaryMaskRect.value.height > 2) {
@@ -1235,7 +1291,8 @@ function onPreviewPointerUp(event?: PointerEvent): void {
   if (event?.currentTarget instanceof HTMLCanvasElement && event.currentTarget.hasPointerCapture(event.pointerId)) {
     event.currentTarget.releasePointerCapture(event.pointerId);
   }
-  drawPreview();
+  previewPointerBounds = null;
+  schedulePreviewDraw();
 }
 
 function drawMaskPath(context: CanvasRenderingContext2D, mask: Mask): void {
@@ -1263,13 +1320,8 @@ function drawMaskEffect(context: CanvasRenderingContext2D, sourceCanvas: HTMLCan
 }
 
 function drawSolidMask(context: CanvasRenderingContext2D, mask: Mask, color: string): void {
-  const center = maskCenter(mask);
-  context.save();
-  context.translate(center.x, center.y);
-  context.rotate(mask.rotation * Math.PI / 180);
   context.fillStyle = color;
-  context.fillRect(-mask.rect.width / 2, -mask.rect.height / 2, mask.rect.width, mask.rect.height);
-  context.restore();
+  context.fillRect(0, 0, context.canvas.width, context.canvas.height);
 }
 
 function maskDeleteHandle(mask: Mask): Point {
@@ -1289,8 +1341,7 @@ function maskDeleteRadius(mask: Mask): number {
   return Math.max(18, Math.min(30, maskHandleRadius(mask) * 0.9));
 }
 
-function drawMaskOverlay(context: CanvasRenderingContext2D, sourceCanvas: HTMLCanvasElement, mask: Mask, temporary = false, selected = false): void {
-  drawMaskEffect(context, sourceCanvas, mask);
+function drawMaskControls(context: CanvasRenderingContext2D, mask: Mask, temporary = false, selected = false): void {
   context.save();
   drawMaskPath(context, mask);
   context.strokeStyle = temporary ? '#007AFF' : 'rgba(255,255,255,0.8)';
@@ -1338,62 +1389,148 @@ function drawMaskOverlay(context: CanvasRenderingContext2D, sourceCanvas: HTMLCa
 
 function drawWatermark(context: CanvasRenderingContext2D, width: number, height: number): void {
   if (!watermarkEnabled.value || !watermarkText.value.trim()) return;
+  const image = currentImage.value;
+  const cacheMatchesCanvas = previewLayerCache
+    && image
+    && previewLayerCache.imageId === image.id
+    && previewLayerCache.width === width
+    && previewLayerCache.height === height;
   const fontSize = Math.max(18, Math.round(Math.max(width, height) / 50));
   const tileWidth = Math.max(360, Math.round(fontSize * 13));
   const tileHeight = Math.max(220, Math.round(fontSize * 8));
-  context.save();
-  context.fillStyle = 'rgba(128,128,128,0.3)';
-  context.font = `600 ${fontSize}px sans-serif`;
-  context.textAlign = 'center';
-  context.textBaseline = 'middle';
-  for (let rowIndex = -2; rowIndex < Math.ceil(height / tileHeight) + 2; rowIndex += 1) {
-    for (let columnIndex = -2; columnIndex < Math.ceil(width / tileWidth) + 2; columnIndex += 1) {
-      context.save();
-      context.translate(columnIndex * tileWidth + tileWidth / 2, rowIndex * tileHeight + tileHeight / 2);
-      context.rotate(-Math.PI / 4);
-      context.fillText(watermarkText.value, 0, 0);
-      context.restore();
+  const signature = `${width}x${height}:${fontSize}:${tileWidth}:${tileHeight}:${watermarkText.value}`;
+  let tile = cacheMatchesCanvas && previewLayerCache?.watermarkSignature === signature
+    ? previewLayerCache.watermarkTile
+    : null;
+  if (!tile) {
+    tile = document.createElement('canvas');
+    tile.width = tileWidth;
+    tile.height = tileHeight;
+    const tileContext = tile.getContext('2d');
+    if (!tileContext) return;
+    tileContext.fillStyle = 'rgba(128,128,128,0.3)';
+    tileContext.font = `600 ${fontSize}px sans-serif`;
+    tileContext.textAlign = 'center';
+    tileContext.textBaseline = 'middle';
+    tileContext.translate(tileWidth / 2, tileHeight / 2);
+    tileContext.rotate(-Math.PI / 4);
+    tileContext.fillText(watermarkText.value, 0, 0);
+    if (cacheMatchesCanvas && previewLayerCache) {
+      previewLayerCache.watermarkTile = tile;
+      previewLayerCache.watermarkSignature = signature;
     }
   }
+  const pattern = context.createPattern(tile, 'repeat');
+  if (!pattern) return;
+  context.save();
+  context.fillStyle = pattern;
+  context.fillRect(0, 0, width, height);
   context.restore();
 }
 
-function drawPreview(): void {
-  const canvas = previewCanvas.value;
-  const image = currentImage.value;
-  if (!canvas || !image) return;
-  canvas.width = image.naturalWidth;
-  canvas.height = image.naturalHeight;
-  const context = canvas.getContext('2d');
-  if (!context) return;
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  context.imageSmoothingEnabled = true;
+function invalidatePreviewLayerCache(): void {
+  previewLayerCache = null;
+  baseCanvasImageId = null;
+}
+
+function getPreviewLayerCache(image: StudioImage): PreviewLayerCache | null {
+  if (
+    previewLayerCache
+    && previewLayerCache.imageId === image.id
+    && previewLayerCache.width === image.naturalWidth
+    && previewLayerCache.height === image.naturalHeight
+  ) return previewLayerCache;
+
   const sourceCanvas = document.createElement('canvas');
   sourceCanvas.width = image.naturalWidth;
   sourceCanvas.height = image.naturalHeight;
   const sourceContext = sourceCanvas.getContext('2d');
-  if (!sourceContext) return;
+  const effectCanvas = document.createElement('canvas');
+  effectCanvas.width = image.naturalWidth;
+  effectCanvas.height = image.naturalHeight;
+  const effectContext = effectCanvas.getContext('2d');
+  if (!sourceContext || !effectContext) return null;
   sourceContext.imageSmoothingEnabled = true;
   sourceContext.imageSmoothingQuality = 'high';
   sourceContext.drawImage(image.element, 0, 0, image.naturalWidth, image.naturalHeight);
-  context.drawImage(sourceCanvas, 0, 0);
+  previewLayerCache = {
+    imageId: image.id,
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+    sourceCanvas,
+    sourceContext,
+    effectCanvas,
+    effectContext,
+    watermarkTile: null,
+    watermarkSignature: '',
+  };
+  return previewLayerCache;
+}
+
+function schedulePreviewDraw(): void {
+  if (previewFrameHandle !== null) return;
+  previewFrameHandle = window.requestAnimationFrame(() => {
+    previewFrameHandle = null;
+    if (pendingPointerPosition) {
+      const position = pendingPointerPosition;
+      pendingPointerPosition = null;
+      applyPreviewPointerMove(position.clientX, position.clientY);
+    }
+    drawPreview();
+  });
+}
+
+function drawPreview(): void {
+  const canvas = previewCanvas.value;
+  const base = baseCanvas.value;
+  const image = currentImage.value;
+  if (!canvas || !base || !image) return;
+  const layerCache = getPreviewLayerCache(image);
+  if (!layerCache) return;
+  if (
+    baseCanvasImageId !== image.id
+    || base.width !== image.naturalWidth
+    || base.height !== image.naturalHeight
+  ) {
+    base.width = image.naturalWidth;
+    base.height = image.naturalHeight;
+    const baseContext = base.getContext('2d');
+    if (!baseContext) return;
+    baseContext.imageSmoothingEnabled = true;
+    baseContext.imageSmoothingQuality = 'high';
+    baseContext.clearRect(0, 0, base.width, base.height);
+    baseContext.drawImage(layerCache.sourceCanvas, 0, 0);
+    baseCanvasImageId = image.id;
+  }
+  if (canvas.width !== image.naturalWidth) canvas.width = image.naturalWidth;
+  if (canvas.height !== image.naturalHeight) canvas.height = image.naturalHeight;
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  context.clearRect(0, 0, canvas.width, canvas.height);
   if (viewMode.value !== 'editing') return;
   if (activeTab.value === 'privacy') {
-    masks.value.forEach((mask, index) => drawMaskOverlay(context, sourceCanvas, mask, false, index === selectedMaskIndex.value));
-    if (temporaryMaskRect.value) drawMaskOverlay(context, sourceCanvas, { rect: temporaryMaskRect.value, style: maskStyle.value, rotation: 0 }, true);
+    const effectContext = layerCache.effectContext;
+    effectContext.clearRect(0, 0, layerCache.effectCanvas.width, layerCache.effectCanvas.height);
+    masks.value.forEach((mask) => drawMaskEffect(effectContext, layerCache.sourceCanvas, mask));
+    if (temporaryMaskRect.value) {
+      drawMaskEffect(effectContext, layerCache.sourceCanvas, { rect: temporaryMaskRect.value, style: maskStyle.value, rotation: 0 });
+    }
+    context.drawImage(layerCache.effectCanvas, 0, 0);
+    masks.value.forEach((mask, index) => drawMaskControls(context, mask, false, index === selectedMaskIndex.value));
+    if (temporaryMaskRect.value) drawMaskControls(context, { rect: temporaryMaskRect.value, style: maskStyle.value, rotation: 0 }, true);
     drawWatermark(context, canvas.width, canvas.height);
   }
   if (activeTab.value === 'resize') {
     const selection = temporaryCropRect.value || cropRect.value;
     if (selection) {
-      context.save();
-      context.fillStyle = 'rgba(0,0,0,0.48)';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.beginPath();
-      context.rect(selection.x, selection.y, selection.width, selection.height);
-      context.clip();
-      context.drawImage(image.element, 0, 0, image.naturalWidth, image.naturalHeight);
-      context.restore();
+       context.save();
+       context.fillStyle = 'rgba(0,0,0,0.48)';
+       context.fillRect(0, 0, canvas.width, canvas.height);
+       context.beginPath();
+       context.rect(selection.x, selection.y, selection.width, selection.height);
+       context.clip();
+       context.drawImage(layerCache.sourceCanvas, 0, 0);
+       context.restore();
       context.save();
       context.strokeStyle = '#007AFF';
       context.lineWidth = Math.max(3, Math.round(Math.max(canvas.width, canvas.height) / 500));
@@ -1416,56 +1553,63 @@ function renderSourceCanvas(image: StudioImage, crop: Rect, width: number, heigh
   return canvas;
 }
 
+function getRotatedMaskBounds(mask: Mask, canvasWidth: number, canvasHeight: number, padding = 0): { left: number; top: number; right: number; bottom: number } | null {
+  const corners = maskCorners(mask);
+  const left = Math.max(0, Math.floor(Math.min(...corners.map((corner) => corner.x)) - padding));
+  const top = Math.max(0, Math.floor(Math.min(...corners.map((corner) => corner.y)) - padding));
+  const right = Math.min(canvasWidth, Math.ceil(Math.max(...corners.map((corner) => corner.x)) + padding));
+  const bottom = Math.min(canvasHeight, Math.ceil(Math.max(...corners.map((corner) => corner.y)) + padding));
+  if (right <= left || bottom <= top) return null;
+  return { left, top, right, bottom };
+}
+
 function drawMosaic(
   context: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   mask: Mask,
 ): void {
-  const pixelWidth = Math.max(1, Math.round(mask.rect.width));
-  const pixelHeight = Math.max(1, Math.round(mask.rect.height));
+  const bounds = getRotatedMaskBounds(mask, canvas.width, canvas.height);
+  if (!bounds) return;
+  const patchWidth = Math.max(1, bounds.right - bounds.left);
+  const patchHeight = Math.max(1, bounds.bottom - bounds.top);
   const mosaicCanvas = document.createElement('canvas');
-  mosaicCanvas.width = pixelWidth;
-  mosaicCanvas.height = pixelHeight;
+  mosaicCanvas.width = patchWidth;
+  mosaicCanvas.height = patchHeight;
   const mosaicContext = mosaicCanvas.getContext('2d');
-  const sourceContext = canvas.getContext('2d');
-  if (!mosaicContext || !sourceContext) return;
-  const sourcePixels = sourceContext.getImageData(0, 0, canvas.width, canvas.height);
+  if (!mosaicContext) return;
   const blockSize = Math.max(4, dynamicMosaicBlock.value);
-  const center = maskCenter(mask);
-  const scaleX = mask.rect.width / pixelWidth;
-  const scaleY = mask.rect.height / pixelHeight;
-  for (let blockY = 0; blockY < pixelHeight; blockY += blockSize) {
-    for (let blockX = 0; blockX < pixelWidth; blockX += blockSize) {
-      const blockWidth = Math.min(blockSize, pixelWidth - blockX);
-      const blockHeight = Math.min(blockSize, pixelHeight - blockY);
-      const localSample = {
-        x: mask.rect.x + (blockX + blockWidth / 2) * scaleX,
-        y: mask.rect.y + (blockY + blockHeight / 2) * scaleY,
-      };
-      const worldSample = rotatePoint(localSample, center, mask.rotation);
-      const sampleX = clamp(Math.round(worldSample.x), 0, canvas.width - 1);
-      const sampleY = clamp(Math.round(worldSample.y), 0, canvas.height - 1);
-      const pixelOffset = (sampleY * sourcePixels.width + sampleX) * 4;
-      const alpha = sourcePixels.data[pixelOffset + 3] / 255;
-      mosaicContext.fillStyle = `rgba(${sourcePixels.data[pixelOffset]}, ${sourcePixels.data[pixelOffset + 1]}, ${sourcePixels.data[pixelOffset + 2]}, ${alpha})`;
-      mosaicContext.fillRect(blockX, blockY, blockWidth, blockHeight);
-    }
-  }
-  context.save();
-  context.imageSmoothingEnabled = false;
-  context.translate(center.x, center.y);
-  context.rotate(mask.rotation * Math.PI / 180);
-  context.drawImage(
-    mosaicCanvas,
+  const reducedCanvas = document.createElement('canvas');
+  reducedCanvas.width = Math.max(1, Math.ceil(patchWidth / blockSize));
+  reducedCanvas.height = Math.max(1, Math.ceil(patchHeight / blockSize));
+  const reducedContext = reducedCanvas.getContext('2d');
+  if (!reducedContext) return;
+  reducedContext.imageSmoothingEnabled = true;
+  reducedContext.imageSmoothingQuality = 'low';
+  reducedContext.drawImage(
+    canvas,
+    bounds.left,
+    bounds.top,
+    patchWidth,
+    patchHeight,
     0,
     0,
-    pixelWidth,
-    pixelHeight,
-    -mask.rect.width / 2,
-    -mask.rect.height / 2,
-    mask.rect.width,
-    mask.rect.height,
+    reducedCanvas.width,
+    reducedCanvas.height,
   );
+  mosaicContext.imageSmoothingEnabled = false;
+  mosaicContext.drawImage(
+    reducedCanvas,
+    0,
+    0,
+    reducedCanvas.width,
+    reducedCanvas.height,
+    0,
+    0,
+    patchWidth,
+    patchHeight,
+  );
+  context.save();
+  context.drawImage(mosaicCanvas, bounds.left, bounds.top);
   context.restore();
 }
 
@@ -1476,26 +1620,20 @@ function drawBlur(
 ): void {
   const radius = Math.max(2, Math.round(Math.min(mask.rect.width, mask.rect.height) / 30));
   const padding = Math.max(4, radius * 3);
+  const bounds = getRotatedMaskBounds(mask, canvas.width, canvas.height, padding);
+  if (!bounds) return;
+  const patchWidth = Math.max(1, bounds.right - bounds.left);
+  const patchHeight = Math.max(1, bounds.bottom - bounds.top);
   const blurredCanvas = document.createElement('canvas');
-  blurredCanvas.width = canvas.width + padding * 2;
-  blurredCanvas.height = canvas.height + padding * 2;
+  blurredCanvas.width = patchWidth;
+  blurredCanvas.height = patchHeight;
   const blurredContext = blurredCanvas.getContext('2d');
   if (!blurredContext) return;
   blurredContext.imageSmoothingEnabled = true;
   blurredContext.imageSmoothingQuality = 'high';
   blurredContext.filter = `blur(${radius}px)`;
-  blurredContext.drawImage(canvas, padding, padding);
-  context.drawImage(
-    blurredCanvas,
-    padding,
-    padding,
-    canvas.width,
-    canvas.height,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  );
+  blurredContext.drawImage(canvas, bounds.left, bounds.top, patchWidth, patchHeight, 0, 0, patchWidth, patchHeight);
+  context.drawImage(blurredCanvas, bounds.left, bounds.top);
 }
 
 function applyMasksAndWatermark(canvas: HTMLCanvasElement, sourceCrop: Rect): void {
@@ -1638,6 +1776,24 @@ function changeExifPickerMonth(delta: number): void {
   if (!match) return;
   const date = new Date(Number(match[1]), Number(match[2]) - 1 + delta, 1);
   exifPickerMonth.value = `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}`;
+}
+
+function changeExifPickerYear(event: Event): void {
+  const year = Number((event.target as HTMLSelectElement).value);
+  const match = exifPickerMonth.value.match(/^(\d{4})-(\d{2})$/);
+  if (!Number.isInteger(year) || year < 1900 || !match) return;
+
+  const month = Number(match[2]);
+  const current = parseDateTimeLocal(exifPickerDraft.value);
+  const day = current?.getDate() || 1;
+  const hours = current?.getHours() || 0;
+  const minutes = current?.getMinutes() || 0;
+  const seconds = current?.getSeconds() || 0;
+  const lastDay = new Date(year, month, 0).getDate();
+  const selected = new Date(year, month - 1, Math.min(day, lastDay), hours, minutes, seconds, 0);
+
+  exifPickerDraft.value = formatDateTimeLocal(selected);
+  exifPickerMonth.value = `${year}-${padDatePart(month)}`;
 }
 
 function selectExifPickerDate(dateKey: string): void {
@@ -1851,7 +2007,7 @@ function updateSelectedMask(nextMask: Mask): void {
   undoStack.value.push(cloneMasks(masks.value));
   masks.value[selectedMaskIndex.value] = cloneMask(nextMask);
   redoStack.value = [];
-  nextTick(drawPreview);
+  nextTick(schedulePreviewDraw);
 }
 
 function normalizeSelectedMaskIndex(): void {
@@ -1879,7 +2035,7 @@ function undoMask(): void {
     redoStack.value.push(cloneMasks(masks.value));
     masks.value = cloneMasks(prev);
     normalizeSelectedMaskIndex();
-    nextTick(drawPreview);
+    nextTick(schedulePreviewDraw);
   }
 }
 function redoMask(): void {
@@ -1888,7 +2044,7 @@ function redoMask(): void {
     undoStack.value.push(cloneMasks(masks.value));
     masks.value = cloneMasks(next);
     normalizeSelectedMaskIndex();
-    nextTick(drawPreview);
+    nextTick(schedulePreviewDraw);
   }
 }
 function clearMasks(): void {
@@ -1897,24 +2053,27 @@ function clearMasks(): void {
   masks.value = [];
   redoStack.value = [];
   selectedMaskIndex.value = null;
-  nextTick(drawPreview);
+  nextTick(schedulePreviewDraw);
 }
 
 watch(() => currentImage.value?.id, (newId, oldId) => {
   if (oldId && oldId !== newId) saveImageState(oldId);
   initializeImageState();
 });
-watch(viewMode, () => nextTick(drawPreview));
-watch([activeTab, masks, watermarkEnabled, watermarkText, maskStyle, cropRect], () => {
+watch(viewMode, () => nextTick(schedulePreviewDraw));
+watch([activeTab, watermarkEnabled, watermarkText, maskStyle, cropRect], () => {
   if (!restoringState && viewMode.value === 'original') viewMode.value = 'editing';
-  nextTick(drawPreview);
+  nextTick(schedulePreviewDraw);
 }, { deep: true });
 
 onMounted(() => {
   document.addEventListener('pointerdown', closeExifDatePickerOnOutside);
-  nextTick(drawPreview);
+  nextTick(schedulePreviewDraw);
 });
 onUnmounted(() => {
+  if (previewFrameHandle !== null) window.cancelAnimationFrame(previewFrameHandle);
+  previewFrameHandle = null;
+  pendingPointerPosition = null;
   document.removeEventListener('pointerdown', closeExifDatePickerOnOutside);
   saveImageState(selectedId.value);
   files.value.forEach((image) => {
@@ -1925,6 +2084,17 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.exif-date-picker {
+  isolation: isolate;
+  background: rgba(24, 24, 27, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 18px 45px rgba(0, 0, 0, 0.48);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+}
+
 .liquid-glass-select {
   appearance: none;
   color-scheme: dark;

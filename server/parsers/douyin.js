@@ -6,13 +6,32 @@ const { createPage } = require('../utils/browser');
 
 const PARSE_TIMEOUT = 45000;
 const MAX_RETRIES = 2;
+const VERSION_NOTICE_PATTERN = /版本过低[，,]\s*升级后可展示全部信息/g;
 
 /**
  * 解析抖音分享链接
  * @param {string} url - 抖音分享链接 (v.douyin.com/...)
  * @returns {Promise<object>} 解析结果
  */
-async function parseDouyin(url) {
+function cleanDouyinText(value) {
+  return String(value || '')
+    .replace(VERSION_NOTICE_PATTERN, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function applySharedCaption(result, sharedCaption) {
+  if (!result) return result;
+  const caption = cleanDouyinText(sharedCaption);
+  return {
+    ...result,
+    title: cleanDouyinText(result.title),
+    description: caption || cleanDouyinText(result.description),
+    hasSharedCaption: Boolean(caption),
+  };
+}
+
+async function parseDouyin(url, sharedCaption = '') {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     let pageCtx = null;
     let apiData = null;
@@ -193,12 +212,12 @@ async function parseDouyin(url) {
         const result = extractDouyinData(data, page);
         if (result && result.media.length > 0) {
           await context.close().catch(() => {});
-          return result;
+          return applySharedCaption(result, sharedCaption);
         }
         // 如果 API 数据解析失败，但 data 有 OG 字段，fallback
         if (data.__ogFallback) {
           await context.close().catch(() => {});
-          return formatResult(data);
+          return applySharedCaption(formatResult(data), sharedCaption);
         }
       }
 
@@ -209,7 +228,7 @@ async function parseDouyin(url) {
       await context.close().catch(() => {});
 
       if (title && title !== '抖音') {
-        return formatResult({ title, url: url_ });
+        return applySharedCaption(formatResult({ title, url: url_ }), sharedCaption);
       }
 
       // 如果到达这里，说明解析失败
@@ -232,7 +251,7 @@ async function parseDouyin(url) {
   }
 
   // 所有尝试失败
-  return {
+  return applySharedCaption({
     title: '抖音',
     description: '抖音解析失败：无法绕过 WAF 风控，请尝试在抖音 APP 中直接保存。',
     author: '',
@@ -241,7 +260,7 @@ async function parseDouyin(url) {
     images: [],
     type: 'unknown',
     media: [],
-  };
+  }, sharedCaption);
 }
 
 /**
