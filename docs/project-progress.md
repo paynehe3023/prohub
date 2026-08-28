@@ -915,3 +915,23 @@ ps1 -StopDev`
 - 消息列表增加 `content-visibility: auto`、`contain-intrinsic-size`、`overscroll-behavior: contain` 和合成层提示，降低长列表滚动时的渲染开销。
 - Host 修改 TTL 时广播房间 `mode`、`ttlMinutes` 和 `expiresAt`，Guest 实时同步临时/永久模式和倒计时，不再被访客默认 TTL 覆盖。
 - 验证：前端 `npm run build`、后端 `node --check server/index.js`、`node --check server/realtime/clipboard.js`、`git diff --check` 通过；本机 `npm ci` 仍因被占用的 `sharp` DLL 无法完成运行依赖安装。
+
+### 二十九.4 剪贴板单点收包与 Guest 倒计时修复（2026-08-28）
+
+- 文本发送改为单点收包渲染：发送函数不再通过 Socket ACK 直接写入列表，只有 `clip:sync` 收包处理函数负责新增或更新消息。
+- 修复重复发送锁：文本发送增加待确认消息表，拦截同一文本在 ACK 返回前被手动发送和 900ms 自动发送重复提交的情况。
+- 修复本端回包被误丢弃：允许服务端广播给发送者的 `clip:sync` 正常进入列表，并在收包第一时间使用 `seenMsgIds` 锁定 `msgId`，再通过 `requestAnimationFrame` 批量更新界面。
+- 文件上传占位卡只负责显示读取/上传进度，不再提前写入去重 Set；最终文件统一等待 `clip:sync` 收包替换占位卡并显示完成状态，避免出现重复文件记录。
+- 后端 Socket.IO 继续向房间内所有客户端广播 `clip:sync`，并为房间会话响应补充 `ROOM_CONFIG_SYNC` 配置数据，确保发送端也能收到自己的同步回包。
+- 新增前端 `ROOM_CONFIG_SYNC` 监听：Guest 加入、Host 修改 TTL 或房间模式后，实时更新销毁模式和过期时间；临时房间显示秒级倒计时，永久房间显示“永不销毁”。
+- “恢复默认”按钮改为与“复制链接”一致的精致胶囊样式，删除二维码区域多余的“输入”按钮，Host 控制栏更加简洁。
+- 验证：前端 `npm run build` 通过；后端 `node --check server/index.js`、`node --check server/realtime/clipboard.js` 通过；`git diff --check` 通过。构建仍仅提示已有的 `heic2any` 大 chunk 警告，不影响结果。
+
+### 二十九.5 移动端背景分层与弹性动效重构（2026-08-28）
+
+- 在 `App.vue` 增加独立固定背景层：背景图、背景色和内容滚动层完全解耦，加入 Emerald、Cyan、Slate 三个低饱和环境光晕，并使用轻量呼吸动画增强空间感。
+- `BgSwitcher.vue` 改为通过 CSS 变量更新固定背景层，纯色、内置壁纸、Bing 壁纸和自定义图片仍保持原有切换与自动保存逻辑。
+- 移动端液态玻璃卡片统一为深色半透明表面、适度毛玻璃、细边框和柔和深度阴影，降低原先大面积高强度模糊造成的厚重感。
+- `RealtimeClipboard.vue` 增加移动端滚动容器能力、横向溢出保护和卡片列表 `Fade-In-Up + 轻微缩放` 进场动画，使用 `cubic-bezier(0.16, 1, 0.3, 1)` 保持自然弹性。
+- 移动端按钮、链接和可点击标签统一增加 `150ms` 触控反馈与 `scale(0.95)` 按压效果，并保留 `prefers-reduced-motion` 用户的减弱动效能力。
+- 验证：前端 `npm run build`、`git diff --check` 通过；构建仍仅提示已有的 `heic2any` 大 chunk 警告，不影响结果。

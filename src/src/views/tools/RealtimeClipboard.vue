@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen py-8 px-4">
+  <div class="mobile-interface-shell min-h-screen overflow-x-hidden py-8 px-4">
     <div class="max-w-7xl mx-auto space-y-6">
-      <section v-if="isHost" class="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl shadow-xl overflow-hidden">
-        <div class="p-6 md:p-8 bg-gradient-to-br from-slate-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
+      <section v-if="isHost" class="mobile-glass-card rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl shadow-xl overflow-hidden">
+        <div class="mobile-glass-card p-6 md:p-8 bg-gradient-to-br from-slate-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
           <div class="flex flex-col xl:flex-row xl:items-start gap-6">
             <div class="flex-1 space-y-5">
               <div class="flex flex-wrap items-center gap-2">
@@ -35,7 +35,7 @@
                 当前地址是本机地址，手机扫码会连不上。请把“外部访问地址”改成电脑局域网 IP 或正式域名。
               </div>
               <div class="grid gap-4 md:grid-cols-3">
-                <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 p-4">
+                <div class="mobile-glass-card rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 p-4">
                   <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0">
                       <p class="text-xs uppercase tracking-[0.24em] text-slate-400">当前房间</p>
@@ -54,37 +54,37 @@
                   <p class="mt-3 text-xs text-slate-500 break-all">{{ displayRoomUrl }}</p>
                 </div>
 
-                <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 p-4">
+                <div class="mobile-glass-card rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 p-4">
                   <div class="flex items-center justify-between gap-3">
                     <div>
                       <p class="text-xs uppercase tracking-[0.24em] text-slate-400">自动销毁</p>
                       <p class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{{ remainingText }}</p>
                     </div>
-                    <select v-model.number="roomTtlMinutes" @change="syncRoomSettings" class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-sky-500">
+                    <select v-model.number="roomTtlMinutes" @change="syncRoomSettings" class="mobile-glass-inset rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-sky-500">
                       <option v-for="option in ttlOptions" :key="option" :value="option">{{ option === 0 ? '永不销毁' : `${option} 分钟` }}</option>
                     </select>
                   </div>
                   <p class="mt-3 text-xs text-slate-500">房间无活动后自动清空，避免持久化隐私残留。</p>
                 </div>
 
-                <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 p-4">
+                <div class="mobile-glass-card rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 p-4">
                   <div class="flex items-center justify-between gap-3">
                     <div>
                       <p class="text-xs uppercase tracking-[0.24em] text-slate-400">外部访问地址</p>
                       <p class="mt-1 text-sm font-semibold text-slate-900 dark:text-white break-all">{{ shareOrigin }}</p>
                     </div>
-                    <button type="button" @click="resetShareOrigin" class="text-xs font-medium text-sky-600 hover:text-sky-500 inline-flex items-center gap-1">
+                    <button type="button" @click="resetShareOrigin" class="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-medium text-sky-600 transition-colors hover:bg-slate-50 hover:text-sky-500 dark:border-slate-700 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-slate-800">
                       <IconRefresh size="14" />
                       恢复默认
                     </button>
                   </div>
-                  <input v-model="shareOriginDraft" type="text" placeholder="http://192.168.1.10:5173 或 https://your-domain.com" class="mt-3 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-sky-500" />
+                   <input v-model="shareOriginDraft" type="text" placeholder="http://192.168.1.10:5173 或 https://your-domain.com" class="mobile-glass-inset mt-3 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-sky-500" />
                   <p class="mt-3 text-xs leading-5" :class="shareOriginHintClass">{{ shareOriginHint }}</p>
                 </div>
               </div>
             </div>
 
-            <div class="w-full xl:w-72 shrink-0 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/75 p-4 shadow-lg">
+            <div class="mobile-glass-card w-full xl:w-72 shrink-0 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/75 p-4 shadow-lg">
               <div class="flex items-center justify-between gap-3">
                 <div>
                   <p class="text-xs uppercase tracking-[0.24em] text-slate-400">房间二维码</p>
@@ -100,14 +100,10 @@
                 <div v-else class="w-44 h-44 rounded-2xl flex items-center justify-center text-slate-400 text-sm">生成中...</div>
               </div>
 
-              <div class="mt-4 flex items-center gap-2">
-                <button type="button" @click="clearRoom" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-900/15 dark:text-rose-300 transition-colors">
+              <div class="mt-4">
+                <button type="button" @click="clearRoom" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-900/15 dark:text-rose-300 transition-colors">
                   <IconTrash size="16" />
                   清空房间
-                </button>
-                <button type="button" @click="focusComposer" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                  <IconClipboardText size="16" />
-                  输入
                 </button>
               </div>
             </div>
@@ -115,7 +111,7 @@
         </div>
       </section>
 
-      <section v-else class="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl px-5 py-4 shadow-xl">
+      <section v-else class="mobile-glass-card rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl px-5 py-4 shadow-xl">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-2">
             <button type="button" @click="copyRoomUrl" class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors">
@@ -129,6 +125,10 @@
               <component :is="statusIcon" size="14" />
               {{ connectionLabel }}
             </span>
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 dark:border-sky-900/50 dark:bg-sky-900/20 dark:text-sky-300">
+              <IconClockHour4 size="14" />
+              {{ remainingText }}
+            </span>
           </div>
           <span class="text-xs text-slate-500 dark:text-slate-400">点击房间号复制链接</span>
         </div>
@@ -136,13 +136,13 @@
 
       <div class="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         <section class="space-y-6">
-          <div class="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
+          <div class="mobile-glass-card rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
             <div class="flex items-center gap-2 mb-4">
               <IconFileText size="18" class="text-sky-600" />
               <h2 class="text-lg font-bold text-slate-900 dark:text-white">文本同步</h2>
             </div>
 
-            <textarea ref="composerRef" v-model="textDraft" @paste="handleTextPaste" @keydown.ctrl.enter.prevent="sendTextNow" @input="scheduleTextSend" rows="8" placeholder="在这里输入内容，或直接 Ctrl+V 粘贴文本/截图/文件。" class="w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sky-500 resize-none" />
+            <textarea v-model="textDraft" @paste="handleTextPaste" @keydown.ctrl.enter.prevent="sendTextNow" @input="scheduleTextSend" rows="8" placeholder="在这里输入内容，或直接 Ctrl+V 粘贴文本/截图/文件。" class="mobile-glass-inset w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sky-500 resize-none" />
 
             <div class="mt-3 flex flex-wrap gap-2">
               <button type="button" @click="sendTextNow" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-700 transition-colors">
@@ -156,7 +156,7 @@
             </div>
           </div>
 
-          <div class="rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-950/50 p-5 transition-colors" :class="dragging ? 'border-sky-500 bg-sky-50/70 dark:bg-sky-900/15' : ''" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="handleDrop">
+          <div class="mobile-glass-card rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-950/50 p-5 transition-colors" :class="dragging ? 'border-sky-500 bg-sky-50/70 dark:bg-sky-900/15' : ''" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="handleDrop">
             <div class="flex items-center gap-2 mb-3">
               <IconUpload size="18" class="text-sky-600" />
               <h3 class="text-base font-bold text-slate-900 dark:text-white">拖拽 / 粘贴图片与文件</h3>
@@ -174,7 +174,7 @@
         </section>
 
         <section class="space-y-4">
-          <div class="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div class="mobile-glass-card rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 class="text-lg font-bold text-slate-900 dark:text-white">同步列表</h2>
               <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">共 {{ clips.length }} 条 · 最多保存 {{ maxClips }} 条 · 失活后自动销毁</p>
@@ -191,12 +191,12 @@
             </div>
           </div>
 
-          <div v-if="!sortedClips.length" class="rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-950/50 p-10 text-center text-slate-500 dark:text-slate-400">
+          <div v-if="!sortedClips.length" class="mobile-glass-card rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-950/50 p-10 text-center text-slate-500 dark:text-slate-400">
             还没有任何内容。先在左侧输入文本，或者直接粘贴截图/拖拽文件试试。
           </div>
 
-          <div class="space-y-4 clipboard-scroll-list">
-            <article v-for="clip in sortedClips" :key="clip.id" class="relative overflow-hidden rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
+          <transition-group name="mobile-card" tag="div" class="space-y-4 clipboard-scroll-list">
+            <article v-for="clip in sortedClips" :key="clip.id" class="mobile-glass-card relative overflow-hidden rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
               <div v-if="clip.transferStatus === 'uploading' || clip.transferStatus === 'failed'" class="absolute inset-x-0 bottom-0 z-10 bg-slate-950/95 px-3 py-2.5 text-white md:inset-0 md:flex md:items-center md:justify-center md:bg-slate-950/55 md:px-6 md:backdrop-blur-sm">
                 <div class="w-full max-w-sm rounded-xl border border-white/15 bg-slate-950/90 p-3 shadow-xl md:rounded-2xl md:p-4">
                   <div class="flex items-center justify-between gap-3">
@@ -254,12 +254,12 @@
               </div>
 
               <div class="mt-4">
-                <div v-if="clip.kind === 'text'" class="rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 p-4">
+                 <div v-if="clip.kind === 'text'" class="mobile-glass-inset rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 p-4">
                   <pre class="whitespace-pre-wrap break-words text-sm leading-7 text-slate-800 dark:text-slate-100 font-mono">{{ clip.text }}</pre>
                 </div>
 
                 <div v-else-if="clip.kind === 'image'" class="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)] items-start">
-                  <div class="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900">
+                   <div class="mobile-glass-inset rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900">
                     <img :src="clip.localPreviewUrl || clip.previewUrl || clip.dataUrl" alt="图片预览" class="w-full h-auto object-contain" />
                   </div>
                   <div class="space-y-3 text-sm text-slate-600 dark:text-slate-400">
@@ -269,7 +269,7 @@
                   </div>
                 </div>
 
-                <div v-else class="rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 p-4 flex items-center gap-4">
+                 <div v-else class="mobile-glass-inset rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 p-4 flex items-center gap-4">
                   <div class="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center shrink-0">
                     <IconFile size="22" />
                   </div>
@@ -281,7 +281,7 @@
                 </div>
               </div>
             </article>
-          </div>
+          </transition-group>
         </section>
       </div>
     </div>
@@ -386,7 +386,6 @@ const socketState = ref('connecting');
 const uploading = ref(false);
 const now = ref(Date.now());
 const toasts = ref([]);
-const composerRef = ref(null);
 const fileInputRef = ref(null);
 const textPreview = ref({
   open: false,
@@ -406,6 +405,7 @@ const uploadRequests = new Map();
 const uploadReaders = new Map();
 const cancelledUploads = new Set();
 const seenMsgIds = new Set();
+const pendingTextMessages = new Map();
 const pendingIncomingClips = new Map();
 let incomingFrameId = 0;
 
@@ -475,7 +475,8 @@ const statusBadgeClass = computed(() => {
   return 'border-amber-200 text-amber-700 bg-amber-50 dark:border-amber-900/50 dark:text-amber-300 dark:bg-amber-900/20';
 });
 const remainingText = computed(() => {
-  if (roomTtlMinutes.value === 0 || !roomExpiresAt.value) return '永不销毁';
+  if (roomTtlMinutes.value === 0 || roomMode.value === 'persistent') return '永不销毁';
+  if (!roomExpiresAt.value) return '等待同步';
   const seconds = Math.max(0, Math.floor((roomExpiresAt.value - now.value) / 1000));
   if (seconds <= 0) return '即将清空';
   const minutes = Math.floor(seconds / 60);
@@ -556,6 +557,7 @@ async function requestRoomSession(nextRoomId, intent = 'join') {
     forgetHostToken(normalizedRoomId);
   }
   syncRoomMeta(data.room);
+  syncRoomConfig(data.config);
   return data;
 }
 
@@ -647,24 +649,31 @@ function clipMessageKey(clip) {
   return String(clip?.msgId || clip?.id || '');
 }
 
-function upsertClip(clip, { allowSelf = false } = {}) {
-  if (!clip) return false;
+function upsertClip(clip, { markSeen = true } = {}) {
+  if (!clip) return { added: false, completed: false };
   const key = clipMessageKey(clip);
-  if (!key) return false;
+  if (!key) return { added: false, completed: false };
   const index = clips.value.findIndex((item) => clipMessageKey(item) === key || item.id === clip.id);
-  if (index < 0 && !allowSelf && clip.clientId && clip.clientId === selfClientId) return false;
-  if (index < 0 && seenMsgIds.has(key)) return false;
   const previous = index >= 0 ? clips.value[index] : null;
-  if (previous?.localPreviewUrl && previous.localPreviewUrl !== clip.localPreviewUrl) {
+  if (index < 0 && markSeen && seenMsgIds.has(key)) {
+    return { added: false, completed: false };
+  }
+  const nextClip = {
+    ...clip,
+    ...(index >= 0 && previous?.localPreviewUrl && !clip.localPreviewUrl ? { localPreviewUrl: previous.localPreviewUrl } : {}),
+    transferStatus: clip.transferStatus || 'complete',
+    transferProgress: clip.transferProgress ?? 100,
+  };
+  if (previous?.localPreviewUrl && previous.localPreviewUrl !== nextClip.localPreviewUrl) {
     URL.revokeObjectURL(previous.localPreviewUrl);
   }
-  seenMsgIds.add(key);
+  if (markSeen) seenMsgIds.add(key);
   if (index >= 0) {
-    clips.value = clips.value.map((item, itemIndex) => (itemIndex === index ? clip : item));
-    return false;
+    clips.value = clips.value.map((item, itemIndex) => (itemIndex === index ? nextClip : item));
+    return { added: false, completed: previous?.transferStatus === 'uploading' };
   }
-  clips.value = [clip, ...clips.value];
-  return true;
+  clips.value = [nextClip, ...clips.value];
+  return { added: true, completed: false };
 }
 
 function replaceInitialClips(incomingClips) {
@@ -689,7 +698,8 @@ function updateUploadCard(msgId, patch) {
 
 function scheduleIncomingClip(clip) {
   const key = clipMessageKey(clip);
-  if (!key || (clip.clientId && clip.clientId === selfClientId) || seenMsgIds.has(key)) return;
+  if (!key || seenMsgIds.has(key)) return;
+  seenMsgIds.add(key);
   pendingIncomingClips.set(key, clip);
   if (incomingFrameId) return;
 
@@ -698,7 +708,10 @@ function scheduleIncomingClip(clip) {
     const batch = Array.from(pendingIncomingClips.values());
     pendingIncomingClips.clear();
     batch.forEach((incomingClip) => {
-      if (upsertClip(incomingClip)) {
+      const incomingKey = clipMessageKey(incomingClip);
+      if (!incomingKey) return;
+      const result = upsertClip(incomingClip, { markSeen: false });
+      if (result.added || result.completed) {
         showToast('success', '收到同步', clipTypeLabel(incomingClip) + ' 已同步到房间。');
       }
     });
@@ -723,7 +736,7 @@ function createUploadCard(file) {
     transferStatus: 'uploading',
     transferProgress: 0,
   };
-  upsertClip(localClip, { allowSelf: true });
+  clips.value = [localClip, ...clips.value];
   return msgId;
 }
 
@@ -742,13 +755,6 @@ function markUploadFailed(msgId, error) {
     transferProgress: 0,
     transferError: error?.message || '文件传输失败',
   });
-}
-
-function completeUpload(msgId, clip, file) {
-  updateUploadCard(msgId, { transferProgress: 100 });
-  upsertClip(clip, { allowSelf: true });
-  cancelledUploads.delete(msgId);
-  showToast('success', '传输完成', `${file.type.startsWith('image/') ? '图片' : '文件'} ${file.name} 传输完成。`);
 }
 
 function hasDownload(clip) {
@@ -791,6 +797,7 @@ function connectSocket() {
         if (response.role) isHost.value = response.role === 'host';
         replaceInitialClips(response.clips || []);
         syncRoomMeta(response.room);
+        syncRoomConfig(response.config);
         showToast('success', '已进入房间', '房间历史内容已同步。');
       }
     });
@@ -822,6 +829,10 @@ function connectSocket() {
   socketInstance.on('clip:init', (payload) => {
     replaceInitialClips(payload?.clips || []);
     syncRoomMeta(payload?.room);
+  });
+
+  socketInstance.on('ROOM_CONFIG_SYNC', (payload) => {
+    syncRoomConfig(payload);
   });
 
   socketInstance.on('clip:sync', (payload) => {
@@ -856,40 +867,55 @@ function disconnectSocket() {
 }
 
 function syncRoomSettings() {
-  if (!socketInstance) return;
+  if (!socketInstance || !isHost.value) return;
   socketInstance.emit('room:update-settings', {
     roomId: roomId.value,
     ttlMinutes: roomTtlMinutes.value,
     mode: roomTtlMinutes.value === 0 ? 'persistent' : 'temporary',
     hostToken: hostToken.value,
+  }, (response) => {
+    if (!response?.ok) {
+      showToast('error', '设置同步失败', response?.error || '房间设置更新失败');
+      return;
+    }
+    syncRoomMeta(response.room);
+    syncRoomConfig(response.config);
   });
 }
 
 function scheduleTextSend() {
   if (textTimer) window.clearTimeout(textTimer);
+  textTimer = null;
+  if (!textDraft.value.trim()) return;
   textTimer = window.setTimeout(() => {
+    textTimer = null;
     if (textDraft.value.trim()) sendTextNow();
   }, 900);
 }
 
 function clearTextDraft() {
+  if (textTimer) window.clearTimeout(textTimer);
+  textTimer = null;
   textDraft.value = '';
   lastSentText = '';
 }
 
 function sendTextNow() {
+  if (textTimer) window.clearTimeout(textTimer);
+  textTimer = null;
   const text = textDraft.value.trim();
   if (!text) {
     showToast('error', '内容为空', '请输入一点文本再同步。');
     return;
   }
-  if (text === lastSentText) return;
   if (!socketInstance) {
     showToast('error', '尚未连接', '请等待房间连接成功后再同步。');
     return;
   }
+  if (text === lastSentText || Array.from(pendingTextMessages.values()).includes(text)) return;
 
   const msgId = createMessageId();
+  pendingTextMessages.set(msgId, text);
   socketInstance.emit('clip:send', {
     roomId: roomId.value,
     kind: 'text',
@@ -898,15 +924,15 @@ function sendTextNow() {
     text,
     ttlMinutes: roomTtlMinutes.value,
   }, (response) => {
+    pendingTextMessages.delete(msgId);
     if (!response?.ok) {
+      if (textDraft.value.trim() === text) lastSentText = '';
       showToast('error', '同步失败', response?.error || '文本发送失败');
       return;
     }
-    upsertClip(response.clip, { allowSelf: true });
     if (response.room) syncRoomMeta(response.room);
     lastSentText = text;
-    textDraft.value = '';
-    showToast('success', '文本已同步', '同房间设备已收到这段文本。');
+    if (textDraft.value.trim() === text) textDraft.value = '';
   });
 }
 
@@ -1043,7 +1069,10 @@ async function uploadAndSendFile(file) {
     }
     if (cancelledUploads.has(msgId)) throw new Error('已取消传输');
     if (response.room) syncRoomMeta(response.room);
-    completeUpload(msgId, response.clip, file);
+    const pendingClip = clips.value.find((clip) => clip.msgId === msgId);
+    if (pendingClip?.transferStatus === 'uploading') {
+      updateUploadCard(msgId, { transferProgress: 99 });
+    }
   } catch (error) {
     markUploadFailed(msgId, error);
     throw error;
@@ -1080,10 +1109,6 @@ function handleDrop(event) {
 
 function triggerFilePick() {
   fileInputRef.value?.click();
-}
-
-function focusComposer() {
-  composerRef.value?.focus();
 }
 
 function handleTextPaste(event) {
@@ -1291,11 +1316,51 @@ async function refreshQr() {
   });
 }
 
+function refreshCountdownTicker() {
+  const shouldRun = roomTtlMinutes.value > 0
+    && roomMode.value !== 'persistent'
+    && Boolean(roomExpiresAt.value);
+  if (!shouldRun) {
+    if (ticker) window.clearInterval(ticker);
+    ticker = null;
+    return;
+  }
+  if (!ticker) {
+    ticker = window.setInterval(() => {
+      now.value = Date.now();
+    }, 1000);
+  }
+}
+
 function syncRoomMeta(room) {
   if (!room) return;
-  if (Object.prototype.hasOwnProperty.call(room, 'mode')) roomMode.value = room.mode || 'temporary';
-  if (Object.prototype.hasOwnProperty.call(room, 'ttlMinutes')) roomTtlMinutes.value = Number(room.ttlMinutes);
-  if (Object.prototype.hasOwnProperty.call(room, 'expiresAt')) roomExpiresAt.value = room.expiresAt;
+  if (Object.prototype.hasOwnProperty.call(room, 'mode')) {
+    roomMode.value = room.mode || 'temporary';
+  }
+  if (Object.prototype.hasOwnProperty.call(room, 'ttlMinutes')) {
+    const nextTtl = Number(room.ttlMinutes);
+    if (Number.isFinite(nextTtl) && nextTtl >= 0) roomTtlMinutes.value = nextTtl;
+  }
+  if (Object.prototype.hasOwnProperty.call(room, 'expiresAt')) {
+    roomExpiresAt.value = room.expiresAt ? Number(room.expiresAt) : null;
+  }
+  now.value = Date.now();
+  refreshCountdownTicker();
+}
+
+function syncRoomConfig(config) {
+  if (!config) return;
+  const room = config.room ? { ...config.room } : {};
+  if (Object.prototype.hasOwnProperty.call(config, 'mode')) room.mode = config.mode;
+  if (Object.prototype.hasOwnProperty.call(config, 'ttlMinutes')) {
+    room.ttlMinutes = config.ttlMinutes;
+  } else if (Object.prototype.hasOwnProperty.call(config, 'ttl')) {
+    room.ttlMinutes = Number(config.ttl) / 60;
+  }
+  if (Object.prototype.hasOwnProperty.call(config, 'expireAt')) {
+    room.expiresAt = config.expireAt;
+  }
+  syncRoomMeta(room);
 }
 
 function resetShareOrigin() {
@@ -1351,9 +1416,7 @@ onMounted(() => {
   if (savedShareOrigin) {
     shareOriginDraft.value = savedShareOrigin;
   }
-  ticker = window.setInterval(() => {
-    now.value = Date.now();
-  }, 1000);
+  refreshCountdownTicker();
   visibilityHandler = () => {
     showToast('success', document.visibilityState === 'visible' ? '页面已回到前台' : '页面已转入后台', document.visibilityState === 'visible' ? '连接状态会自动重连保持。' : '继续后台运行，回到页面即可恢复可见状态。');
   };
@@ -1369,6 +1432,7 @@ onBeforeUnmount(() => {
   incomingFrameId = 0;
   pendingIncomingClips.clear();
   seenMsgIds.clear();
+  pendingTextMessages.clear();
   uploadReaders.forEach((reader) => {
     if (reader.readyState === FileReader.LOADING) reader.abort();
   });
@@ -1392,6 +1456,21 @@ onBeforeUnmount(() => {
   overscroll-behavior: contain;
   will-change: transform;
   transform: translateZ(0);
+}
+
+.mobile-card-enter-active,
+.mobile-card-leave-active {
+  transition: opacity 420ms cubic-bezier(0.16, 1, 0.3, 1), transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mobile-card-enter-from,
+.mobile-card-leave-to {
+  opacity: 0;
+  transform: translateY(14px) scale(0.985);
+}
+
+.mobile-card-move {
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .toast-enter-active,

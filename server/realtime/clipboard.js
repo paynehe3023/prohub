@@ -105,6 +105,17 @@ function clipSummary(room) {
   };
 }
 
+function roomConfigPayload(room) {
+  return {
+    type: 'ROOM_CONFIG_SYNC',
+    mode: room.mode,
+    ttl: room.ttlMs ? Math.round(room.ttlMs / 1000) : 0,
+    ttlMinutes: Math.round(room.ttlMs / 60000),
+    expireAt: room.expiresAt,
+    room: clipSummary(room),
+  };
+}
+
 function trimClips(room) {
   while (room.clips.length > MAX_CLIPS) {
     const removed = room.clips.shift();
@@ -334,6 +345,7 @@ function handleJoin(room, payload) {
     ok: true,
     role: hasValidHostToken(room, payload?.hostToken) ? 'host' : 'guest',
     room: clipSummary(room),
+    config: roomConfigPayload(room),
     clips: room.clips,
   };
 }
@@ -347,7 +359,7 @@ function handleUpdateSettings(room, payload) {
   touchRoom(room, ttlMinutes);
   const roomState = clipSummary(room);
   broadcastRoom(room, 'room:settings', roomState);
-  return { ok: true, room: roomState };
+  return { ok: true, room: roomState, config: roomConfigPayload(room) };
 }
 
 function handleClipSend(room, payload, clientId) {
@@ -397,6 +409,7 @@ function handleRoomSession(payload) {
     ok: true,
     role: isHost ? 'host' : 'guest',
     room: clipSummary(room),
+    config: roomConfigPayload(room),
   };
 
   if (isHost) result.hostToken = room.hostToken;
@@ -444,6 +457,7 @@ function registerClipboardRealtime(app, httpServer) {
           socket.data.hostToken = String(payload.hostToken || '');
           const result = handleJoin(room, payload);
           socket.emit('clip:init', { room: result.room, clips: result.clips });
+          socket.emit('ROOM_CONFIG_SYNC', result.config);
           if (typeof acknowledge === 'function') acknowledge(result);
         } catch (error) {
           if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
@@ -458,7 +472,7 @@ function registerClipboardRealtime(app, httpServer) {
             clientId: payload.clientId || socket.data.clientId,
           }, socket.data.clientId);
           if (result.ok && !result.duplicate) {
-            socket.to(room.roomId).emit('clip:sync', { room: result.room, clip: result.clip });
+            socketServer.to(room.roomId).emit('clip:sync', { room: result.room, clip: result.clip });
           }
           if (typeof acknowledge === 'function') acknowledge(result);
         } catch (error) {
@@ -485,6 +499,7 @@ function registerClipboardRealtime(app, httpServer) {
             hostToken: payload.hostToken || socket.data.hostToken,
           });
           socketServer.to(room.roomId).emit('room:settings', result.room);
+          socketServer.to(room.roomId).emit('ROOM_CONFIG_SYNC', result.config);
           if (typeof acknowledge === 'function') acknowledge(result);
         } catch (error) {
           if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });

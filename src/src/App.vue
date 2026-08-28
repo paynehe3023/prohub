@@ -1,5 +1,10 @@
 <template>
-  <div class="min-h-screen flex flex-col relative">
+  <div class="app-background-layer fixed inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden="true">
+    <div class="app-ambient-glow app-ambient-glow-emerald animate-pulse"></div>
+    <div class="app-ambient-glow app-ambient-glow-cyan animate-pulse"></div>
+    <div class="app-ambient-glow app-ambient-glow-slate animate-pulse"></div>
+  </div>
+  <div class="min-h-screen flex flex-col relative z-10">
     <AppHeader />
     <main class="flex-1 relative z-[1]">
       <router-view />

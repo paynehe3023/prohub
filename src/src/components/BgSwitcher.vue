@@ -135,14 +135,13 @@ function previewStyle(background) {
 }
 
 function applyBodyBackground(background) {
+  const rootStyle = document.documentElement.style;
   const bodyStyle = document.body.style;
   const imageUrl = background.imageUrl || '';
-  bodyStyle.backgroundImage = imageUrl ? `url("${imageUrl}")` : 'none';
-  bodyStyle.backgroundColor = background.color || (imageUrl ? '#111827' : '#F2F2F7');
-  bodyStyle.backgroundSize = imageUrl ? 'cover' : '';
-  bodyStyle.backgroundPosition = imageUrl ? 'center' : '';
-  bodyStyle.backgroundRepeat = imageUrl ? 'no-repeat' : '';
-  bodyStyle.backgroundAttachment = imageUrl ? 'fixed' : '';
+  rootStyle.setProperty('--prohub-background-image', imageUrl ? `url("${imageUrl}")` : 'none');
+  rootStyle.setProperty('--prohub-background-color', background.color || (imageUrl ? '#111827' : '#F2F2F7'));
+  bodyStyle.backgroundImage = 'none';
+  bodyStyle.backgroundColor = 'transparent';
   bodyStyle.color = background.textColor || '';
   document.body.dataset.backgroundId = background.id;
 }
