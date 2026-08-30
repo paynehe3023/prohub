@@ -27,6 +27,18 @@
 
     <div v-if="result" class="space-y-4">
 
+      <!-- 无水印状态徽章（醒目，便于用户/测试一眼确认） -->
+      <div
+        class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[0.75rem] font-semibold shadow-sm backdrop-blur-md"
+        :class="result.noWatermark
+          ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300'
+          : 'border-ios-orange/50 bg-ios-orange/15 text-ios-orange'"
+      >
+        <IconShieldCheck v-if="result.noWatermark" class="w-4 h-4" />
+        <IconAlertTriangle v-else class="w-4 h-4" />
+        {{ result.noWatermark ? '已检测：无水印版本' : '提示：当前返回仍含水印痕迹，建议在 App 内手动保存' }}
+      </div>
+
       <!-- 一键下载全部（右上角醒目按钮） -->
       <div class="flex justify-end">
         <button v-if="allDownloads.length > 0" @click="downloadAll" :disabled="downloading"
@@ -116,9 +128,10 @@
 <script setup>
 import { ref, computed, nextTick } from 'vue';
 import { useHead } from '@vueuse/head';
-import { IconChevronRight, IconSearch, IconLoader2, IconDownload, IconPhoto, IconVideo, IconCopy, IconCheck, IconLink } from '@tabler/icons-vue';
+import { IconChevronRight, IconSearch, IconLoader2, IconDownload, IconPhoto, IconVideo, IconCopy, IconCheck, IconLink, IconShieldCheck, IconAlertTriangle } from '@tabler/icons-vue';
 import BreadcrumbNav from '../../components/BreadcrumbNav.vue';
 import { apiConfig } from '../../config/api';
+import { saveBlob } from '../../lib/download';
 
 useHead({ title: '社交平台无水印解析下载 - proHub' });
 const inputRef = ref(null), inputUrl = ref(''), loading = ref(false), error = ref(''), result = ref(null), copied = ref(false), downloading = ref(false), toast = ref('');
@@ -167,16 +180,8 @@ function extensionFromResponse(response, blob, rawUrl, type) {
 }
 
 function triggerBlobDownload(blob, filename) {
-  const blobUrl = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = blobUrl;
-  a.download = filename;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  // Keep the object URL alive long enough for mobile browsers to start the download.
-  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+  // 统一保存逻辑：移动端优先系统分享面板（图片/视频可"保存到相册"），桌面直接下载
+  void saveBlob(blob, filename);
 }
 
 // 统一下载逻辑：按媒体类型选择代理 → fetch blob → 触发浏览器下载

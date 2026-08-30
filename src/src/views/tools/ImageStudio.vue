@@ -34,7 +34,70 @@
 
     <div class="grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)] gap-5">
       <aside class="relative z-[200] space-y-5">
-        <section class="liquid-glass p-4">
+        <!-- 二维码合并模式：图片队列卡片框变为二维码上传框 -->
+        <section v-if="activeTab === 'qrcode'" class="liquid-glass p-4">
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 class="text-sm font-semibold text-white text-glass">二维码合并</h2>
+              <p class="text-[0.6875rem] text-zinc-500 mt-1">合并后微信、支付宝均可扫码付款</p>
+            </div>
+            <button
+              type="button"
+              class="rounded-xl px-3 py-2 text-xs font-medium transition-all"
+              :class="qrAlipayImg && qrWechatImg && !qrMerging ? 'bg-ios-blue text-white shadow-lg shadow-ios-blue/20' : 'liquid-glass-inset text-zinc-500 cursor-not-allowed'"
+              :disabled="!qrAlipayImg || !qrWechatImg || qrMerging"
+              @click="mergeQRCodes"
+            >{{ qrMerging ? '合并中' : '合并' }}</button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="relative rounded-[14px] border border-dashed p-3 text-center transition-colors min-h-[132px] flex flex-col items-center justify-center gap-2"
+              :class="qrAlipayImg ? 'border-solid border-ios-blue/50 bg-ios-blue/10' : 'border-white/20 bg-black/10 hover:border-white/40'"
+              @click="triggerQrPick('alipay')"
+            >
+              <img v-if="qrAlipayImg" :src="qrAlipayImg.url" alt="支付宝二维码" class="w-20 h-20 rounded-lg object-contain bg-white" />
+              <IconQrcode v-else class="w-7 h-7 text-zinc-400" />
+              <span class="text-[0.6875rem]" :class="qrAlipayImg ? 'text-white' : 'text-zinc-400'">
+                {{ qrAlipayImg ? '已上传 · 点击更换' : '支付宝二维码' }}
+              </span>
+              <button
+                v-if="qrAlipayImg"
+                type="button"
+                class="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-black/70 text-white text-sm leading-none flex items-center justify-center hover:bg-ios-red shadow-md shrink-0 tap-target-hit"
+                title="移除支付宝二维码"
+                aria-label="移除支付宝二维码"
+                @click.stop.prevent="clearQrImage('alipay')"
+              >×</button>
+              <input ref="qrAlipayInput" type="file" accept="image/*" class="hidden" @change="onQrFileChange($event, 'alipay')" />
+            </button>
+            <button
+              type="button"
+              class="relative rounded-[14px] border border-dashed p-3 text-center transition-colors min-h-[132px] flex flex-col items-center justify-center gap-2"
+              :class="qrWechatImg ? 'border-solid border-ios-green/50 bg-ios-green/10' : 'border-white/20 bg-black/10 hover:border-white/40'"
+              @click="triggerQrPick('wechat')"
+            >
+              <img v-if="qrWechatImg" :src="qrWechatImg.url" alt="微信二维码" class="w-20 h-20 rounded-lg object-contain bg-white" />
+              <IconBrandWechat v-else class="w-7 h-7 text-zinc-400" />
+              <span class="text-[0.6875rem]" :class="qrWechatImg ? 'text-white' : 'text-zinc-400'">
+                {{ qrWechatImg ? '已上传 · 点击更换' : '微信二维码' }}
+              </span>
+              <button
+                v-if="qrWechatImg"
+                type="button"
+                class="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-black/70 text-white text-sm leading-none flex items-center justify-center hover:bg-ios-red shadow-md shrink-0 tap-target-hit"
+                title="移除微信二维码"
+                aria-label="移除微信二维码"
+                @click.stop.prevent="clearQrImage('wechat')"
+              >×</button>
+              <input ref="qrWechatInput" type="file" accept="image/*" class="hidden" @change="onQrFileChange($event, 'wechat')" />
+            </button>
+          </div>
+          <p v-if="qrError" class="mt-2 rounded-xl border border-ios-red/40 bg-ios-red/10 px-3 py-2 text-[0.6875rem] text-ios-red">{{ qrError }}</p>
+        </section>
+
+        <section v-else class="liquid-glass p-4">
           <div class="flex items-center justify-between gap-3 mb-3">
             <div>
               <h2 class="text-sm font-semibold text-white text-glass">图片队列</h2>
@@ -44,21 +107,26 @@
           </div>
           <div v-if="!files.length" class="py-8 text-center text-xs text-zinc-500">还没有图片</div>
           <div v-else class="space-y-2 max-h-72 overflow-y-auto pr-1">
-            <button
+            <div
               v-for="image in files"
               :key="image.id"
-              type="button"
-              class="w-full flex items-center gap-3 rounded-[16px] p-2 text-left transition-colors"
+              class="w-full flex items-center gap-3 rounded-[16px] p-2 text-left transition-colors cursor-pointer"
               :class="selectedId === image.id ? 'bg-ios-blue/20 ring-1 ring-ios-blue/50' : 'liquid-glass-inset hover:bg-white/10'"
               @click="selectImage(image.id)"
             >
-              <img :src="image.sourceUrl" :alt="image.name" class="w-12 h-12 rounded-xl object-cover bg-black/20 shrink-0" />
-              <span class="min-w-0 flex-1">
+              <img :src="image.sourceUrl" :alt="image.name" class="w-12 h-12 rounded-xl object-cover bg-black/20 shrink-0 pointer-events-none" />
+              <span class="min-w-0 flex-1 pointer-events-none">
                 <span class="block truncate text-xs text-white text-glass">{{ image.name }}</span>
                 <span class="block text-[0.6875rem] text-zinc-500 mt-1">{{ image.naturalWidth }} × {{ image.naturalHeight }} · {{ formatBytes(image.size) }}</span>
               </span>
-              <span class="text-zinc-500 hover:text-white text-lg leading-none" title="移除图片" @click.stop="removeImage(image.id)">×</span>
-            </button>
+              <button
+                type="button"
+                class="shrink-0 w-11 h-11 -my-2 -mr-2 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-black/30 text-2xl leading-none tap-target-hit"
+                title="移除图片"
+                aria-label="移除图片"
+                @click.stop.prevent="removeImage(image.id)"
+              >×</button>
+            </div>
           </div>
         </section>
 
@@ -68,11 +136,11 @@
               v-for="tab in tabs"
               :key="tab.id"
               type="button"
-              class="min-h-14 rounded-[14px] px-2 py-2 text-[0.6875rem] font-medium transition-all"
+              class="min-h-[56px] rounded-[14px] px-2 py-3 text-[0.6875rem] font-medium transition-all active:scale-[0.96]"
               :class="activeTab === tab.id ? 'bg-ios-blue text-white shadow-lg shadow-ios-blue/20' : 'liquid-glass-inset text-zinc-400 hover:text-white'"
               @click="switchTab(tab.id)"
             >
-              <span class="block text-sm mb-1">{{ tab.symbol }}</span>
+              <span class="block text-base mb-1">{{ tab.symbol }}</span>
               {{ tab.label }}
             </button>
           </div>
@@ -282,6 +350,20 @@
             </label>
           </div>
 
+          <div v-else-if="activeTab === 'qrcode'" class="space-y-4">
+            <div>
+              <h2 class="text-sm font-semibold text-white text-glass">二维码合并</h2>
+              <p class="text-[0.6875rem] text-zinc-500 mt-1">上传微信与支付宝收款码，合并为一个双通道二维码。</p>
+            </div>
+            <div class="rounded-xl liquid-glass-inset p-3 text-[0.6875rem] text-zinc-400 space-y-1.5">
+              <p class="text-zinc-300">使用方式</p>
+              <p>1. 分别上传两个收款码截图</p>
+              <p>2. 点击「合并」生成合并二维码</p>
+              <p>3. 可在二维码下方编辑文字后下载</p>
+              <p class="pt-1 text-zinc-500">扫码后会根据 App 自动跳转到对应付款页。</p>
+            </div>
+          </div>
+
           <div v-else class="space-y-4">
             <div>
               <h2 class="text-sm font-semibold text-white text-glass">拼长图与九宫格</h2>
@@ -294,7 +376,7 @@
             <p class="text-[0.6875rem] text-zinc-500">当前队列 {{ files.length }} 张，至少需要 2 张图片。</p>
           </div>
 
-          <button type="button" class="w-full btn-ios btn-ios-primary justify-center" :disabled="!currentImage || isProcessing || (activeTab === 'compose' && files.length < 2)" @click="runPrimaryAction">
+          <button v-if="activeTab !== 'qrcode'" type="button" class="w-full btn-ios btn-ios-primary justify-center" :disabled="!currentImage || isProcessing || (activeTab === 'compose' && files.length < 2)" @click="runPrimaryAction">
             {{ isProcessing ? '处理中...' : primaryActionLabel }}
           </button>
           <button v-if="activeTab === 'compose'" type="button" class="w-full btn-ios btn-ios-glass justify-center" :disabled="!currentImage || isProcessing" @click="createNineGridAndScroll">
@@ -304,7 +386,50 @@
       </aside>
 
       <main class="min-w-0 space-y-5">
-        <section class="liquid-glass p-4 sm:p-5">
+        <!-- 二维码合并：结果区（进度条 / 合并二维码 / 文字编辑 / 下载） -->
+        <section ref="qrResultSection" v-if="activeTab === 'qrcode'" class="liquid-glass p-4 sm:p-5">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 class="text-base font-semibold text-white text-glass">合并结果</h2>
+              <p class="text-[0.6875rem] text-zinc-500 mt-1">扫码后按 App 自动跳转微信或支付宝付款。</p>
+            </div>
+            <button v-if="qrMergedUrl" type="button" class="btn-ios btn-ios-glass py-2 px-3 text-xs" @click="downloadQrMerged"><IconDownload class="w-4 h-4" />下载</button>
+          </div>
+
+          <div v-if="qrMerging" class="min-h-[360px] rounded-[20px] bg-black/20 border border-white/10 flex items-center justify-center p-4">
+            <div class="w-full max-w-sm text-center">
+              <div class="flex items-center justify-between text-xs mb-2">
+                <span class="text-zinc-300">{{ qrStage }}</span>
+                <span class="text-ios-blue font-semibold tabular-nums">{{ Math.floor(qrProgress) }}%</span>
+              </div>
+              <div class="h-2.5 rounded-full bg-white/10 overflow-hidden">
+                <div class="h-full rounded-full bg-gradient-to-r from-ios-blue to-emerald-400 transition-all duration-200 ease-out" :style="{ width: qrProgress + '%' }" />
+              </div>
+              <p class="text-[0.6875rem] text-zinc-500 mt-2">正在本地解析并合成二维码</p>
+            </div>
+          </div>
+
+          <div v-else-if="!qrMergedUrl" class="min-h-[360px] rounded-[20px] bg-black/20 border border-dashed border-white/15 flex items-center justify-center p-4 text-center text-sm text-zinc-500">
+            上传支付宝与微信收款码后，点击左侧「合并」开始
+          </div>
+
+          <div v-else class="flex flex-col items-center gap-5">
+            <div class="rounded-[20px] bg-white p-4 shadow-2xl">
+              <img :src="qrMergedUrl" alt="合并二维码" class="block max-w-full w-[320px] h-auto" />
+            </div>
+            <label class="w-full max-w-sm block text-xs text-zinc-400">二维码文字（显示在二维码下方）
+              <input
+                v-model="qrCaption"
+                type="text"
+                maxlength="40"
+                placeholder="例如：请扫码付款 · 谢谢"
+                class="mt-2 w-full rounded-xl liquid-glass-inset px-3 py-2 text-white outline-none"
+              />
+            </label>
+          </div>
+        </section>
+
+        <section v-else class="liquid-glass p-4 sm:p-5">
           <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
               <h2 class="text-base font-semibold text-white text-glass">预览</h2>
@@ -388,10 +513,13 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useHead } from '@vueuse/head';
 
 import JSZip from 'jszip';
-import { IconClockHour4, IconDownload, IconPhoto } from '@tabler/icons-vue';
+import jsQR from 'jsqr';
+import QRCode from 'qrcode';
+import { IconClockHour4, IconDownload, IconPhoto, IconQrcode, IconBrandWechat } from '@tabler/icons-vue';
 import BreadcrumbNav from '../../components/BreadcrumbNav.vue';
+import { saveBlob } from '../../lib/download';
 
-type StudioTab = 'compress' | 'resize' | 'privacy' | 'convert' | 'compose';
+type StudioTab = 'compress' | 'resize' | 'privacy' | 'convert' | 'compose' | 'qrcode';
 type MaskStyle = 'mosaic' | 'black' | 'white' | 'blur';
 type ComposeDirection = 'vertical' | 'horizontal';
 
@@ -467,6 +595,7 @@ const tabs: Array<{ id: StudioTab; label: string; symbol: string }> = [
   { id: 'privacy', label: '隐私水印', symbol: '◇' },
   { id: 'convert', label: '格式转换', symbol: '⇄' },
   { id: 'compose', label: '拼接九宫格', symbol: '▦' },
+  { id: 'qrcode', label: '二维码合并', symbol: '◈' },
 ];
 
 const presets: Preset[] = [
@@ -922,6 +1051,293 @@ function switchTab(tab: StudioTab): void {
   if (tab === 'resize' && currentImage.value && !cropRect.value) cropRect.value = fullImageRect();
   nextTick(schedulePreviewDraw);
 }
+
+// ---------- 二维码合并 ----------
+const qrAlipayImg = ref<{ url: string; name: string } | null>(null);
+const qrWechatImg = ref<{ url: string; name: string } | null>(null);
+const qrAlipayInput = ref<HTMLInputElement | null>(null);
+const qrWechatInput = ref<HTMLInputElement | null>(null);
+const qrMerging = ref(false);
+const qrProgress = ref(0);
+const qrStage = ref('');
+const qrBaseDataUrl = ref(''); // 纯二维码（不含文字），文字编辑时重新合成
+const qrMergedUrl = ref(''); // 最终合成图（二维码 + 文字）
+const qrResultSection = ref<HTMLElement | null>(null);
+const qrCaption = ref('请扫码付款 · 谢谢');
+const qrError = ref('');
+
+// 宽松识别"像收款码 / 合法跳转链接"的内容 —— 兼容微信、支付宝、QQ、银联、云闪付、
+// 各类聚合支付码、以及直接 HTTPS 转链页等来源。
+// 允许：支付协议 / http(s) / 纯字母数字 token / 常见二维码内容格式组合。
+function looksLikeValidQrPayload(t: string): boolean {
+  if (typeof t !== 'string' || !t) return false;
+  const v = t.trim();
+  if (!v) return false;
+  // 协议型（支付/网页/小程序/短链）
+  if (/^(wxp:\/\/|weixin:\/\/|wx:\/\/|alipays:\/\/|alipayqr:\/\/|qqpay:\/\/|uppay:\/\/|tenpay:\/\/|https?:\/\/|ftp:\/\/|market:\/\/|qr:\/\/|alipay:\/\/)/i.test(v)) {
+    return true;
+  }
+  // 纯 base64 / 数字串 / 短 ID（部分银行、聚合码使用 token 式二维码）：长度 6-4096
+  if (/^[A-Za-z0-9\-_=+.~@#/:?&%]{6,4096}$/.test(v)) return true;
+  return false;
+}
+
+function triggerQrPick(which: 'alipay' | 'wechat'): void {
+  const el = which === 'alipay' ? qrAlipayInput.value : qrWechatInput.value;
+  el?.click();
+}
+
+function clearQrImage(which: 'alipay' | 'wechat'): void {
+  if (which === 'alipay' && qrAlipayImg.value) {
+    URL.revokeObjectURL(qrAlipayImg.value.url);
+    qrAlipayImg.value = null;
+  } else if (which === 'wechat' && qrWechatImg.value) {
+    URL.revokeObjectURL(qrWechatImg.value.url);
+    qrWechatImg.value = null;
+  }
+  qrError.value = '';
+  qrMergedUrl.value = '';
+}
+
+function onQrFileChange(event: Event, which: 'alipay' | 'wechat'): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    qrError.value = '请上传图片格式的二维码';
+    input.value = '';
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  if (which === 'alipay') {
+    if (qrAlipayImg.value) URL.revokeObjectURL(qrAlipayImg.value.url);
+    qrAlipayImg.value = { url, name: file.name };
+  } else {
+    if (qrWechatImg.value) URL.revokeObjectURL(qrWechatImg.value.url);
+    qrWechatImg.value = { url, name: file.name };
+  }
+  qrError.value = '';
+  qrMergedUrl.value = '';
+  input.value = '';
+}
+
+function loadQrImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('图片加载失败，请重试'));
+    img.src = url;
+  });
+}
+
+async function decodeQrImage(url: string): Promise<string> {
+  const img = await loadQrImage(url);
+  const maxSide = 1600; // 大截图等比缩小，加快识别
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('无法创建画布上下文');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const result = jsQR(data.data, data.width, data.height, { inversionAttempts: 'attemptBoth' });
+  if (!result || !result.data) throw new Error('二维码识别失败，请上传清晰完整的收款码截图');
+  return result.data;
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+}
+
+function wrapCaption(text: string, maxChars: number, maxLines: number): string[] {
+  const lines: string[] = [];
+  let current = '';
+  for (const ch of text) {
+    current += ch;
+    if (current.length >= maxChars) {
+      lines.push(current);
+      current = '';
+      if (lines.length === maxLines) return lines;
+    }
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+  return lines;
+}
+
+function composeQrImage(qrDataUrl: string, caption: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 720;
+      const pad = 48;
+      const trimmed = caption.trim();
+      const lines = trimmed ? wrapCaption(trimmed, 16, 3) : [];
+      const lineHeight = 46;
+      const captionHeight = lines.length ? 30 + lines.length * lineHeight : 24;
+      const canvas = document.createElement('canvas');
+      canvas.width = size + pad * 2;
+      canvas.height = pad + size + captionHeight + pad;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('无法创建画布上下文'));
+        return;
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, pad, pad, size, size);
+      if (lines.length) {
+        ctx.fillStyle = '#111111';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '600 32px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+        lines.forEach((line, i) => {
+          ctx.fillText(line, canvas.width / 2, pad + size + 30 + i * lineHeight + lineHeight / 2);
+        });
+      }
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => reject(new Error('二维码渲染失败'));
+    img.src = qrDataUrl;
+  });
+}
+
+async function mergeQRCodes(): Promise<void> {
+  if (!qrAlipayImg.value || !qrWechatImg.value || qrMerging.value) return;
+  qrMerging.value = true;
+  qrError.value = '';
+  qrMergedUrl.value = '';
+  qrProgress.value = 0;
+  try {
+    qrStage.value = '识别支付宝二维码';
+    await nextFrame();
+    const alipayText = await decodeQrImage(qrAlipayImg.value.url);
+    qrProgress.value = 22;
+
+    qrStage.value = '识别微信二维码';
+    await nextFrame();
+    const wechatText = await decodeQrImage(qrWechatImg.value.url);
+    qrProgress.value = 42;
+
+    if (!looksLikeValidQrPayload(alipayText) || !looksLikeValidQrPayload(wechatText)) {
+      throw new Error('识别结果不是有效的二维码内容，请上传清晰完整的收款码或链接二维码');
+    }
+
+    // 生成跳转链接：/pay-merge 页会按扫码环境（微信/支付宝 UA）自动跳转对应付款，
+    // 这是"一个二维码同时支持微信+支付宝付款"的实现方式。
+    // 内容过长（> 600 字符）时先用服务端短链，避免 QR 编码溢出
+    qrStage.value = '生成合并链接';
+    await nextFrame();
+    let jump =
+      `${window.location.origin}/pay-merge?` +
+      `w=${encodeURIComponent(wechatText)}&a=${encodeURIComponent(alipayText)}`;
+
+    const useShortLinkFirst = jump.length > 600;
+    if (useShortLinkFirst) {
+      qrStage.value = '生成短链（内容较长）';
+      try {
+        const resp = await fetch('/api/qr/shorten', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ w: wechatText, a: alipayText }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data?.id) jump = `${window.location.origin}/pay-merge?s=${encodeURIComponent(data.id)}`;
+        }
+      } catch {
+        /* 网络异常：继续尝试原始长链接；若仍失败会在 QRCode.toDataURL 抛出 */
+      }
+    }
+    qrProgress.value = 68;
+
+    qrStage.value = '渲染合并二维码';
+    let qrDataUrl: string;
+    try {
+      qrDataUrl = await QRCode.toDataURL(jump, {
+        width: 720,
+        margin: 2,
+        // L 级纠错能承载更大内容；若失败再用 M 重试一次
+        errorCorrectionLevel: 'L',
+      });
+    } catch (qrErr) {
+      // 长链接生成失败时（典型 "code length overflow"），降级短链
+      if (!useShortLinkFirst) {
+        qrStage.value = '生成短链（链接超长）';
+        const resp = await fetch('/api/qr/shorten', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ w: wechatText, a: alipayText }),
+        });
+        if (!resp.ok) throw new Error('二维码内容过长，且短链服务暂不可用，请稍后再试');
+        const data = await resp.json();
+        if (!data?.id) throw new Error('短链生成失败，请重试');
+        jump = `${window.location.origin}/pay-merge?s=${encodeURIComponent(data.id)}`;
+        qrDataUrl = await QRCode.toDataURL(jump, { width: 720, margin: 2, errorCorrectionLevel: 'L' });
+      } else {
+        // 已经用了短链仍失败 → 再尝试放宽参数
+        qrDataUrl = await QRCode.toDataURL(jump, {
+          width: 1000,
+          margin: 1,
+          errorCorrectionLevel: 'L',
+        });
+      }
+    }
+    qrBaseDataUrl.value = qrDataUrl;
+    qrProgress.value = 90;
+
+    qrStage.value = '添加文字';
+    qrMergedUrl.value = await composeQrImage(qrDataUrl, qrCaption.value);
+    qrProgress.value = 100;
+    // 合并完成：自动平滑滚动到结果区
+    // 兜底：隐藏/遮挡窗口会冻结 smooth 滚动动画（Chromium 特性），
+    // 600ms 后仍未滚到位则瞬时跳转，保证任何环境下都能滚到结果区
+    nextTick(() => {
+      const el = qrResultSection.value;
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.setTimeout(() => {
+        const top = el.getBoundingClientRect().top;
+        if (Math.abs(top) > 50) el.scrollIntoView({ block: 'start' });
+      }, 600);
+    });
+  } catch (err) {
+    let msg = err instanceof Error ? err.message : '合并失败，请重试';
+    if (/code length overflow|too.*big|内容过长/i.test(msg)) {
+      msg = '二维码内容过长，请尝试短链模式或联系管理员开启服务器短链服务';
+    }
+    qrError.value = msg;
+  } finally {
+    qrMerging.value = false;
+  }
+}
+
+async function downloadQrMerged(): Promise<void> {
+  if (!qrMergedUrl.value) return;
+  try {
+    // dataURL → Blob，走统一保存逻辑（移动端分享面板 / 桌面直接下载）
+    const blob = await (await fetch(qrMergedUrl.value)).blob();
+    const tag = qrCaption.value.trim().slice(0, 12);
+    await saveBlob(blob, `合并收款码${tag ? '_' + tag : ''}.png`);
+  } catch {
+    /* 用户取消分享面板或转换失败：静默处理 */
+  }
+}
+
+// 文字编辑 → 重新合成（300ms 防抖）
+let qrCaptionTimer = 0;
+watch(qrCaption, () => {
+  if (!qrBaseDataUrl.value || qrMerging.value) return;
+  window.clearTimeout(qrCaptionTimer);
+  qrCaptionTimer = window.setTimeout(async () => {
+    if (!qrBaseDataUrl.value) return;
+    try {
+      qrMergedUrl.value = await composeQrImage(qrBaseDataUrl.value, qrCaption.value);
+    } catch {
+      /* 保持旧结果 */
+    }
+  }, 300);
+});
 
 function applyPreset(): void {
   const image = currentImage.value;
@@ -1966,15 +2382,8 @@ function extensionForMime(mime: string): string {
 }
 
 function downloadBlob(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  // 移动端优先系统分享面板（可保存到相册），桌面端直接下载
+  void saveBlob(blob, fileName);
 }
 
 function downloadProcessed(): void {

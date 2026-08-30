@@ -1,6 +1,14 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { parseDouyin } = require('../parsers/douyin');
+const watermarkUtils = require('../utils/watermark');
+const {
+  isWatermarkedImageUrl,
+  isWatermarkedVideoUrl,
+  pickNoWatermark,
+  allNoWatermark,
+} = watermarkUtils;
+const sharp = require('sharp');
 
 // ==================== 浏览器 UA 池 ====================
 const UA_POOL = [
@@ -10,6 +18,7 @@ const UA_POOL = [
   'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
 ];
 const MOBILE_UA = UA_POOL[2];
+const DESKTOP_UA = UA_POOL[0]; // 小红书用桌面 UA 以获取原始无水印图（nd_dft），移动 UA 会返回 h5_1080 缩略图
 
 function randomUA() { return UA_POOL[Math.floor(Math.random() * UA_POOL.length)]; }
 
@@ -26,13 +35,14 @@ function detectPlatform(url) {
 // ==================== HTTP 请求 ====================
 const PLATFORM_COOKIES = {
   weibo: 'SUB=_2AkMR; SUBP=0033WrSXqPxfM;',
-  xiaohongshu: 'a1=18; webId=abc;',
+  xiaohongshu: 'xsecappid=xhs-pc-web; webId=abc123;',
   douyin: 'msToken=; ttwid=;',
 };
 
 async function fetchPage(url, opts = {}) {
-  const ua = opts.mobile ? MOBILE_UA : randomUA();
   const platform = detectPlatform(url);
+  // 小红书必须用桌面 UA 以获取原始无水印图（nd_dft），移动 UA 会返回 h5_1080 缩略图
+  const ua = platform === 'xiaohongshu' ? DESKTOP_UA : (opts.mobile ? MOBILE_UA : randomUA());
   const cookie = PLATFORM_COOKIES[platform] || '';
   const referer = opts.referer || {
     xiaohongshu: 'https://www.xiaohongshu.com/',
@@ -70,6 +80,12 @@ function metaContent($, selector) {
 }
 
 // ==================== 小红书解析 ====================
+// 小红书 CDN: !h5_1080 = 缩略图, !nd_dft = 无水印原图
+function xhsToNdDft(url) {
+  const s = String(url || '');
+  return /!h5_1080/i.test(s) ? s.replace(/!h5_1080/i, '!nd_dft') : s;
+}
+
 function parseXiaohongshu(html) {
   const $ = cheerio.load(html);
   const media = [];
@@ -120,22 +136,63 @@ function parseXiaohongshu(html) {
 
         const imageList = noteDetail.imageList || noteDetail.image_list || [];
         for (const img of imageList) {
-          let imgUrl = img.urlDefault || img.url_default || img.url || img.infoList?.[0]?.url || img.info_list?.[0]?.url || '';
+          const rawCandidates = [
+            img.urlDefault,
+            img.url_default,
+            img.noWatermarkDefault,
+            img.no_watermark_default,
+            img.url,
+            img.noWatermarkUrl,
+            img.no_watermark_url,
+            img.urlPre,
+            img.url_pre,
+            // infoList 包含不同画质版本，优先取 imageScene 含 DFT 且不含 WM 的
+            ...(img.infoList?.filter((i) => /DFT/i.test(i.imageScene || '') && !/WM/i.test(i.imageScene || '')).map((i) => i.url) || []),
+            ...(img.infoList?.filter((i) => /nd_dft/i.test(i.url || '')).map((i) => i.url) || []),
+            ...(img.infoList?.map((i) => i.url) || []),
+            ...(img.info_list?.map((i) => i.url) || []),
+          ].filter(Boolean);
+
+          // 对含 !h5_1080 的 URL 生成 !nd_dft 无水印原图变体（小红书 CDN 约定）
+          const ndDftVariants = rawCandidates
+            .filter((u) => /!h5_1080/i.test(String(u)))
+            .map((u) => String(u).replace(/!h5_1080/i, '!nd_dft'));
+
+          // 统一先去掉查询参数（部分图床仅在 query 拼加水印标识）
+          const strippedCandidates = [
+            ...ndDftVariants, // nd_dft 变体优先
+            ...rawCandidates.map((u) => String(u).replace(/\?.*$/, '')),
+          ];
+
+          // 优先取显式无水印/原始版本（nd_dft、WB_DFT、noWatermark 关键词），再退回 pickNoWatermark
+          const preferred = strippedCandidates.find((u) =>
+            /nd_dft|WB_DFT|no_?watermark/i.test(u) && !isWatermarkedImageUrl(u)
+          );
+          const imgUrl = preferred || pickNoWatermark(strippedCandidates, 'image');
           if (imgUrl && !imgUrl.includes('avatar')) {
-            imgUrl = imgUrl.replace(/\?.*$/, '');
-            media.push({ type: 'image', url: imgUrl, thumb: imgUrl + '?imageView2/1/w/400' });
+            media.push({ type: 'image', url: imgUrl, thumb: rawCandidates[0] ? `${rawCandidates[0].split('?')[0]}?imageView2/1/w/400` : `${imgUrl}?imageView2/1/w/400` });
           }
         }
 
         const video = noteDetail.video;
         if (video) {
-          const vUrl = video.consumer?.originVideoKey
-            || video.media?.stream?.h264?.[0]?.masterUrl
-            || video.media?.stream?.h265?.[0]?.masterUrl
-            || video.media?.video?.url
-            || video.m3u8_url
-            || video.url
-            || '';
+          const videoCandidates = [
+            video.originVideoUrl,
+            video.origin_video_url,
+            video.media?.stream?.h264?.[0]?.masterUrl,
+            video.media?.stream?.h265?.[0]?.masterUrl,
+            video.media?.stream?.h264?.map?.((s) => s?.masterUrl),
+            video.media?.stream?.h265?.map?.((s) => s?.masterUrl),
+            video.media?.video?.url,
+            video.media?.video?.url_list?.[0],
+            video.video_url,
+            video.videoUrl,
+            video.consumer?.originVideoKey,
+            video.consumer?.origin_video_key,
+            video.m3u8_url,
+            video.url,
+          ].flat(2).filter(Boolean);
+          const vUrl = pickNoWatermark(videoCandidates, 'video');
           if (vUrl) {
             media.push({ type: 'video', url: vUrl, thumb: video.image?.firstFrameFileid || video.cover?.urlDefault || video.cover?.url || video.firstFrameFileid || '' });
           }
@@ -152,7 +209,10 @@ function parseXiaohongshu(html) {
   if (media.length === 0) {
     const ogImg = metaContent($, 'meta[property="og:image"]');
     if (ogImg) {
-      media.push({ type: 'image', url: ogImg.replace(/\?.*$/, ''), thumb: ogImg });
+      const clean = xhsToNdDft(ogImg.replace(/\?.*$/, ''));
+      if (!isWatermarkedImageUrl(clean)) {
+        media.push({ type: 'image', url: clean, thumb: ogImg });
+      }
     }
   }
 
@@ -161,7 +221,10 @@ function parseXiaohongshu(html) {
     $('link[rel="preload"][as="image"]').each((_, el) => {
       const href = $(el).attr('href') || '';
       if (href && (href.includes('xhscdn') || href.includes('sns-img') || href.includes('sns-webpic'))) {
-        media.push({ type: 'image', url: href.replace(/\?.*$/, ''), thumb: href });
+        const clean = xhsToNdDft(href.replace(/\?.*$/, ''));
+        if (!isWatermarkedImageUrl(clean)) {
+          media.push({ type: 'image', url: clean, thumb: href });
+        }
       }
     });
   }
@@ -175,7 +238,10 @@ function parseXiaohongshu(html) {
       if (srcset && (srcset.includes('xhscdn') || srcset.includes('sns-img') || srcset.includes('sns-webpic'))) {
         const firstUrl = srcset.split(',')[0]?.trim().split(' ')[0] || '';
         if (firstUrl) {
-          media.push({ type: 'image', url: firstUrl.replace(/\?.*$/, ''), thumb: firstUrl });
+          const clean = xhsToNdDft(firstUrl.replace(/\?.*$/, ''));
+          if (!isWatermarkedImageUrl(clean)) {
+            media.push({ type: 'image', url: clean, thumb: firstUrl });
+          }
         }
       }
     });
@@ -187,7 +253,10 @@ function parseXiaohongshu(html) {
       if (src && (src.includes('xhscdn') || src.includes('sns-img') || src.includes('sns-webpic') || src.includes('ci.xiaohongshu.com'))) {
         // 排除头像
         if (src.includes('avatar') || src.includes('/avatar/')) return;
-        media.push({ type: 'image', url: src.replace(/\?.*$/, ''), thumb: src });
+        const clean = xhsToNdDft(src.replace(/\?.*$/, ''));
+        if (!isWatermarkedImageUrl(clean)) {
+          media.push({ type: 'image', url: clean, thumb: src });
+        }
       }
     });
   }
@@ -197,8 +266,12 @@ function parseXiaohongshu(html) {
   const videoUrls = media.filter(m => m.type === 'video').map(m => m.url);
   const cover = media.find(m => m.type === 'video')?.thumb || images[0] || '';
   const type = videoUrls.length > 0 ? 'video' : (images.length > 0 ? 'image' : 'text');
+  // 空数组视为 true，避免"只有图片没有视频"时被 allNoWatermark([], 'video')=false 误判
+  const noWatermark =
+    (images.length > 0 ? allNoWatermark(images, 'image') : true) &&
+    (videoUrls.length > 0 ? allNoWatermark(videoUrls, 'video') : true);
 
-  return { title, description, author, media, images, cover, video: videoUrls[0] || '', type };
+  return { title, description, author, media, images, cover, video: videoUrls[0] || '', type, noWatermark };
 }
 
 // ==================== 微博解析 ====================
@@ -342,6 +415,10 @@ function parseWeiboItemInfo(data) {
     ? `${title}\n\n//@${retweeted.user?.screen_name || ''}: ${retweetedTitle}`
     : title;
 
+  const noWatermark =
+    allNoWatermark(images, 'image') &&
+    (videoUrl ? !isWatermarkedVideoUrl(videoUrl) : true);
+
   return {
     title,
     description,
@@ -351,6 +428,7 @@ function parseWeiboItemInfo(data) {
     images,
     type: videoUrl ? 'video' : (images.length > 0 ? 'image' : 'text'),
     media,
+    noWatermark,
   };
 }
 
@@ -403,7 +481,8 @@ function collectWeiboImageUrls(status, includeOriginalPic) {
       }
 
       const normalizedCandidates = candidates.map(normalizeWeiboImageUrl).filter(Boolean);
-      const imageUrl = normalizedCandidates.find((candidate) => !isWatermarkedWeiboUrl(candidate))
+      const imageUrl = normalizedCandidates.find((candidate) => !isWatermarkedWeiboImageUrl(candidate))
+        || normalizedCandidates.find((candidate) => !isWatermarkedWeiboUrl(candidate))
         || normalizedCandidates[0]
         || '';
       if (imageUrl && !handled.has(pid || imageUrl)) {
@@ -500,10 +579,9 @@ function normalizeWeiboVideoUrl(value) {
 
 /**
  * 判断是否是水印版本微博视频 URL
+ * 现直接委托给统一的视频水印判断（utils/watermark.js）。
  */
-function isWatermarkedWeiboUrl(url) {
-  return /\/wm\/|\bwm\b|watermark|mark_|_wm\.mp4|watermarked/i.test(url);
-}
+function isWatermarkedWeiboUrl(url) { return isWatermarkedVideoUrl(url); }
 
 async function parseWeibo(url) {
   console.log(`[WB] Parsing: ${url.slice(0, 80)}`);
@@ -512,7 +590,7 @@ async function parseWeibo(url) {
   const idInfo = extractWeiboId(url);
   if (!idInfo) {
     console.log('[WB] Could not extract Weibo ID from URL');
-    return { title: '微博', description: '无法从链接中提取微博ID', author: '', cover: '', video: '', images: [], type: 'unknown', media: [] };
+    return { title: '微博', description: '无法从链接中提取微博ID', author: '', cover: '', video: '', images: [], type: 'unknown', media: [], noWatermark: false };
   }
 
   console.log(`[WB] Extracted mid: ${idInfo.mid}`);
@@ -574,7 +652,7 @@ function parseGeneric(html) {
       const imgs = Array.isArray(jsonLd.image) ? jsonLd.image : [jsonLd.image];
       for (const img of imgs) {
         const u = typeof img === 'string' ? img : img.url || img.contentUrl || '';
-        if (u) media.push({ type: 'image', url: u, thumb: u });
+        if (u && !isWatermarkedImageUrl(u)) media.push({ type: 'image', url: u, thumb: u });
       }
     }
   }
@@ -586,19 +664,19 @@ function parseGeneric(html) {
   // OG image
   if (media.length === 0) {
     const ogImg = metaContent($, 'meta[property="og:image"]');
-    if (ogImg) media.push({ type: 'image', url: ogImg, thumb: ogImg });
+    if (ogImg && !isWatermarkedImageUrl(ogImg)) media.push({ type: 'image', url: ogImg, thumb: ogImg });
   }
 
   // OG video
   const ogVideo = metaContent($, 'meta[property="og:video"]') || metaContent($, 'meta[property="og:video:url"]');
-  if (ogVideo) media.push({ type: 'video', url: ogVideo, thumb: '' });
+  if (ogVideo && !isWatermarkedVideoUrl(ogVideo)) media.push({ type: 'video', url: ogVideo, thumb: '' });
 
   // video 标签
   if (media.length === 0) {
     const v = $('video').first();
     if (v.length) {
       const src = v.attr('src') || v.find('source').attr('src') || '';
-      if (src) media.push({ type: 'video', url: src, thumb: v.attr('poster') || '' });
+      if (src && !isWatermarkedVideoUrl(src)) media.push({ type: 'video', url: src, thumb: v.attr('poster') || '' });
     }
   }
 
@@ -608,16 +686,38 @@ function parseGeneric(html) {
       if (media.length >= 5) return false;
       const src = $(el).attr('src');
       if (src && !src.includes('data:') && !src.includes('icon') && !src.includes('logo')
-        && !src.includes('avatar') && !src.includes('pixel')) {
+        && !src.includes('avatar') && !src.includes('pixel') && !isWatermarkedImageUrl(src)) {
         media.push({ type: 'image', url: src, thumb: src });
       }
     });
   }
 
-  return { title, description, author, media };
+  const images = media.filter((m) => m.type === 'image').map((m) => m.url);
+  const videoUrls = media.filter((m) => m.type === 'video').map((m) => m.url);
+  const cover = media.find((m) => m.type === 'image')?.url || '';
+  const type = videoUrls.length ? 'video' : (images.length ? 'image' : 'text');
+  const noWatermark = allNoWatermark(images, 'image') && allNoWatermark(videoUrls, 'video');
+  return {
+    title,
+    description,
+    author,
+    cover,
+    video: videoUrls[0] || '',
+    images,
+    type,
+    media,
+    noWatermark,
+  };
 }
 
 // ==================== 辅助函数 ====================
+
+// 无水印 URL 检测/择优：定义集中在 ../utils/watermark.js，此处再保留一层兼容别名：
+//   isWatermarkedWeiboUrl        -> 微博视频 URL 去水印筛选（兼容旧命名）
+//   isWatermarkedWeiboImageUrl   -> 微博图片 URL 去水印筛选
+function isWatermarkedWeiboUrl(url) { return isWatermarkedVideoUrl(url); }
+function isWatermarkedWeiboImageUrl(url) { return isWatermarkedImageUrl(url); }
+
 function findDeep(obj, key) {
   if (!obj || typeof obj !== 'object') return null;
   if (obj[key]) return obj[key];
@@ -775,6 +875,24 @@ router.post('/parse', async (req, res) => {
     if (!result.title) result.title = `来自${platformLabel(platform)}的内容`;
     if (!result.description) result.description = result.title;
 
+    // 最终兜底：对返回的 images/video 再做一次无水印优拣 + 确定性 noWatermark 标记
+    const finalImages = (result.images || []).map((u) => pickNoWatermark([u], 'image'));
+    const finalVideo = (() => {
+      if (!result.video) return '';
+      return pickNoWatermark([result.video], 'video');
+    })();
+    const finalMedia = (result.media || []).map((m) => {
+      if (!m || !m.url) return m;
+      return { ...m, url: pickNoWatermark([m.url], m.type === 'video' ? 'video' : 'image') };
+    });
+    const noWatermark = (finalImages.length > 0 ? allNoWatermark(finalImages, 'image') : true)
+      && (finalVideo ? !isWatermarkedVideoUrl(finalVideo) : true)
+      && (finalMedia.length > 0 ? finalMedia.every((m) => {
+        if (!m?.url) return true;
+        return m.type === 'video' ? !isWatermarkedVideoUrl(m.url) : !isWatermarkedImageUrl(m.url);
+      }) : (finalImages.length > 0 || finalVideo))
+      && Boolean(result.noWatermark !== false);
+
     // 构建响应：包含平台专用字段 (cover, video, images, type)
     res.json({
       code: 200,
@@ -787,11 +905,12 @@ router.post('/parse', async (req, res) => {
       // 新增：抖音/图文专用字段
       type: result.type || 'unknown',
       cover: result.cover || '',
-      video: result.video || '',
-      images: result.images || [],
+      video: finalVideo,
+      images: finalImages,
+      noWatermark,
       hasSharedCaption: Boolean(result.hasSharedCaption),
       // 保持向后兼容
-      media: (result.media || []).slice(0, 20),
+      media: finalMedia.slice(0, 20),
     });
   } catch (err) {
     console.error('[Parse Error]', err.message);
@@ -813,7 +932,58 @@ router.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ==================== 图片代理（解决微博等图床防盗链 403） ====================
+/**
+ * 微博图片原创水印擦除（右下角 @作者名 烧入像素的水印）
+ * 两步法：①取上方 3 倍高度区域 resize 覆盖（提供无水印背景）②对水印区域强力模糊（消除残留文字）
+ */
+async function removeWeiboWatermark(buffer) {
+  try {
+    const meta = await sharp(buffer).metadata();
+    const w = meta.width || 0;
+    const h = meta.height || 0;
+    if (!w || !h || w < 600) return buffer; // 小图（缩略图）不处理
+
+    // 水印区域：右下角 24%×7%（实测微博 @作者名 水印约占 15%×3%，留余量）
+    const mw = Math.ceil(w * 0.24);
+    const mh = Math.ceil(h * 0.07);
+    const x = w - mw;
+    const y = h - mh;
+
+    // 第一步：取上方 3 倍高度区域，resize 到水印大小，模糊覆盖（提供干净背景）
+    const sampleH = Math.min(mh * 3, y);
+    const sampleTop = y - sampleH;
+    let stage = buffer;
+    if (sampleH > 0) {
+      const patch = await sharp(buffer)
+        .extract({ left: x, top: sampleTop, width: mw, height: sampleH })
+        .resize(mw, mh)
+        .blur(20)
+        .toBuffer();
+      stage = await sharp(buffer)
+        .composite([{ input: patch, left: x, top: y, blend: 'over' }])
+        .toBuffer();
+    }
+
+    // 第二步：对水印区域再做强力高斯模糊，彻底消除残留水印文字
+    const blurredWatermark = await sharp(stage)
+      .extract({ left: x, top: y, width: mw, height: mh })
+      .blur(30)
+      .toBuffer();
+
+    const result = await sharp(stage)
+      .composite([{ input: blurredWatermark, left: x, top: y, blend: 'over' }])
+      .jpeg({ quality: 92 })
+      .toBuffer();
+
+    console.log(`[WatermarkRemoval] ${w}x${h} watermark ${mw}x${mh} -> ${result.length} bytes`);
+    return result;
+  } catch (e) {
+    console.error('[WatermarkRemoval] Error:', e.message);
+    return buffer; // 失败返回原图
+  }
+}
+
+// ==================== 图片代理（解决微博等图床防盗链 403 + 微博原创水印擦除） ====================
 router.get('/proxy-image', async (req, res) => {
   try {
     const imageUrl = req.query.url;
@@ -828,23 +998,31 @@ router.get('/proxy-image', async (req, res) => {
       return res.status(403).json({ error: '不支持的图片域名' });
     }
 
+    const domainKey = host.split('.').slice(-2).join('.');
     console.log(`[ProxyImg] ${imageUrl.slice(0, 80)}`);
 
     const imgRes = await axios.get(imageUrl, {
       headers: {
         'User-Agent': MOBILE_UA,
-        'Referer': { 'sinaimg.cn': 'https://weibo.com/', 'xhscdn.com': 'https://www.xiaohongshu.com/' }[host.split('.').slice(-2).join('.')] || '',
+        'Referer': { 'sinaimg.cn': 'https://weibo.com/', 'xhscdn.com': 'https://www.xiaohongshu.com/' }[domainKey] || '',
       },
       responseType: 'arraybuffer',
       timeout: 20000,
       validateStatus: s => s < 500,
     });
 
+    let imgBuffer = Buffer.from(imgRes.data);
+
+    // 微博图片：擦除右下角原创水印（@作者名，烧入像素）
+    if (domainKey === 'sinaimg.cn') {
+      imgBuffer = await removeWeiboWatermark(imgBuffer);
+    }
+
     const ct = imgRes.headers['content-type'] || 'image/jpeg';
     res.setHeader('Content-Type', ct);
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.send(Buffer.from(imgRes.data));
+    res.send(imgBuffer);
   } catch (e) {
     console.error('[ProxyImg Error]', e.message);
     res.status(502).json({ error: '图片代理失败' });
@@ -868,7 +1046,13 @@ router.get('/proxy-video', async (req, res) => {
 
     const upstreamHeaders = {
       'User-Agent': MOBILE_UA,
-      'Referer': 'https://weibo.com/',
+      // 按域名设置正确 Referer，避免抖音等 CDN 因防盗链 403
+      'Referer': (() => {
+        const videoHost = (() => { try { return new URL(videoUrl).hostname; } catch { return ''; } })();
+        if (videoHost.includes('douyin') || videoHost.includes('bytedance') || videoHost.includes('pstatp') || videoHost.includes('ixigua') || videoHost.includes('bytecdn')) return 'https://www.douyin.com/';
+        if (videoHost.includes('xhscdn') || videoHost.includes('xiaohongshu')) return 'https://www.xiaohongshu.com/';
+        return 'https://weibo.com/';
+      })(),
       'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
       'Accept-Encoding': 'identity',
@@ -922,5 +1106,11 @@ router.get('/proxy-video', async (req, res) => {
 // ==================== AI 抠图（已迁移至 remove-bg.js 独立模块） ====================
 
 module.exports = router;
+module.exports.watermarkUtils = {
+  isWatermarkedImageUrl,
+  isWatermarkedVideoUrl,
+  pickNoWatermark,
+  allNoWatermark,
+};
 
 

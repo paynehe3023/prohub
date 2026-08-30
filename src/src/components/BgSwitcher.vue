@@ -1,14 +1,19 @@
 <template>
-  <div ref="switcherRef" class="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-[calc(1.5rem+env(safe-area-inset-left))] z-[80] flex flex-col gap-2">
+  <div
+    ref="switcherRef"
+    class="floating-bar-root fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-[calc(1.5rem+env(safe-area-inset-left))] z-[80] flex flex-col gap-2"
+    :class="{ 'floating-bar-hidden': barHidden }"
+  >
     <button
       type="button"
       @click="open = !open"
-      class="h-10 w-10 rounded-2xl liquid-glass flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-slate-800 dark:hover:text-white hover:shadow-lg active:scale-95 motion-interactive text-[0.625rem] font-bold"
+      class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/60 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur-md transition hover:bg-slate-50 dark:border-slate-700/60 dark:bg-slate-900/80 dark:text-slate-200 motion-interactive"
       title="换背景"
       aria-label="换背景"
       :aria-expanded="open"
     >
-      <IconPhoto class="w-4 h-4" />
+      <IconPhoto class="h-4 w-4" />
+      换背景
     </button>
 
     <Transition name="switcher">
@@ -90,10 +95,16 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { IconPhoto } from '@tabler/icons-vue';
+import { useHideOnScroll } from '../composables/useHideOnScroll';
 
 const BACKGROUND_STORAGE_KEY = 'prohub-background';
 const emit = defineEmits(['change']);
+
+// 滚动隐藏（同顶栏），但展开面板时保持显示
+const { hidden: scrollHidden } = useHideOnScroll();
 const open = ref(false);
+const barHidden = computed(() => scrollHidden.value && !open.value);
+
 const switcherRef = ref(null);
 const activeBackgroundId = ref('');
 const bingWallpapers = ref([]);
@@ -153,6 +164,9 @@ function applyBackground(background, options = {}) {
     window.localStorage.setItem(BACKGROUND_STORAGE_KEY, background.id);
   }
   emit('change', background);
+  try {
+    window.dispatchEvent(new CustomEvent('prohub:background-changed', { detail: { id: background.id } }));
+  } catch {}
 }
 
 function findBackground(id) {
@@ -213,6 +227,23 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 与顶栏一致的下滑隐藏动画（340ms cubic-bezier），向下滑出视口底部 + 渐隐更柔和 */
+.floating-bar-root {
+  transition: transform 340ms cubic-bezier(0.16, 1, 0.3, 1), opacity 260ms ease;
+}
+
+.floating-bar-hidden {
+  transform: translateY(calc(100% + 1.5rem + env(safe-area-inset-bottom)));
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-bar-root {
+    transition: none;
+  }
+}
+
 .switcher-enter-active { transition: all 0.2s ease-out; }
 .switcher-leave-active { transition: all 0.15s ease-in; }
 .switcher-enter-from, .switcher-leave-to { opacity: 0; transform: translateY(8px); }

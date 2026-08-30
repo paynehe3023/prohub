@@ -1,21 +1,20 @@
 <template>
-  <header class="sticky top-3 z-50 mx-auto max-w-[95%] liquid-glass-strong bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800">
+  <header
+    class="sticky top-3 z-50 mx-auto max-w-[95%] liquid-glass-strong bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800"
+    :class="{ 'app-header-hidden': headerHidden }"
+  >
     <div class="px-5 sm:px-6">
       <div class="flex items-center justify-between h-14">
         <router-link to="/" class="flex items-center gap-2.5 group shrink-0">
-          <div class="w-8 h-8 rounded-[10px] bg-ios-blue flex items-center justify-center shadow-md shadow-ios-blue/25">
-            <IconBox class="w-4.5 h-4.5 text-white" />
+          <div class="w-8 h-8 rounded-[10px] bg-blue-600 flex items-center justify-center shadow-md">
+            <svg class="w-5 h-5 text-white" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M11 9h6a4 4 0 0 1 0 8h-2v6h-4V9zM15 15h2a2 2 0 0 0 0-4h-2v4z" fill="white"/>
+            </svg>
           </div>
-          <span class="text-[1.0625rem] font-bold tracking-[-0.022em] text-slate-900 dark:text-white text-glass whitespace-nowrap">proHub</span>
+          <span class="text-[1.0625rem] font-bold tracking-[-0.022em] text-slate-900 dark:text-white whitespace-nowrap">proHub</span>
         </router-link>
 
-        <nav class="hidden md:flex items-center gap-6 mx-4">
-          <router-link to="/" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-slate-600 text-glass-sm hover:text-slate-950 dark:text-zinc-300 dark:hover:text-white transition-colors whitespace-nowrap">首页</router-link>
-          <a href="#tools" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-slate-600 text-glass-sm hover:text-slate-950 dark:text-zinc-300 dark:hover:text-white transition-colors whitespace-nowrap">工具</a>
-          <a href="https://github.com/paynehe3023/prohub" target="_blank" rel="noopener" class="text-[0.8125rem] font-medium tracking-[-0.01em] text-slate-600 text-glass-sm hover:text-slate-950 dark:text-zinc-300 dark:hover:text-white transition-colors whitespace-nowrap">GitHub</a>
-        </nav>
-
-        <div class="flex items-center gap-2 shrink-0">
+        <div class="flex items-center gap-3 shrink-0">
           <button
             type="button"
             class="px-2 py-1.5 text-[0.8125rem] font-medium text-slate-600 text-glass-sm hover:text-slate-950 dark:text-zinc-300 dark:hover:text-white motion-interactive"
@@ -25,7 +24,7 @@
           </button>
           <button @click="cycleTheme" class="w-8 h-8 rounded-full liquid-glass-inset flex items-center justify-center hover:shadow-md active:scale-[0.95] motion-interactive"
             :title="`当前主题：${themeMode}`">
-            <IconSun v-if="isDark" class="w-3.5 h-3.5 text-ios-yellow" />
+            <IconSun v-if="isDark" class="w-3.5 h-3.5 text-yellow-500" />
             <IconMoon v-else class="w-3.5 h-3.5 text-slate-500 dark:text-white/70" />
           </button>
         </div>
@@ -116,13 +115,17 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useTheme } from '../composables/useTheme';
-import { IconBox, IconSun, IconMoon, IconX, IconShieldCheck, IconBolt, IconMail, IconCopy, IconCheck } from '@tabler/icons-vue';
+import { useHideOnScroll } from '../composables/useHideOnScroll';
+import { IconSun, IconMoon, IconX, IconShieldCheck, IconBolt, IconMail, IconCopy, IconCheck } from '@tabler/icons-vue';
+
 const { isDark, themeMode, cycleTheme } = useTheme();
+
 const aboutOpen = ref(false);
 const emailCopied = ref(false);
 let emailCopiedTimer = null;
+
 async function copyEmail() {
   const email = 'paynehe3023@gmail.com';
   try {
@@ -130,9 +133,6 @@ async function copyEmail() {
   } catch {
     const textarea = document.createElement('textarea');
     textarea.value = email;
-    textarea.setAttribute('readonly', '');
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
     document.body.appendChild(textarea);
     textarea.select();
     document.execCommand('copy');
@@ -145,18 +145,40 @@ async function copyEmail() {
     emailCopiedTimer = null;
   }, 1800);
 }
+
 function handleKeydown(event) {
   if (event.key !== 'Escape') return;
   aboutOpen.value = false;
 }
+
+// 滚动隐藏逻辑与底部浮动按钮共用（累积距离制，见 useHideOnScroll.js）
+const { hidden: headerHidden } = useHideOnScroll();
+
+// Esc 关闭关于弹窗
 onMounted(() => document.addEventListener('keydown', handleKeydown));
-onUnmounted(() => {
+onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown);
   if (emailCopiedTimer) window.clearTimeout(emailCopiedTimer);
 });
 </script>
 
 <style scoped>
+header {
+  transition: transform 340ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.app-header-hidden {
+  /* 补偿 sticky 的 top-3 偏移与移动端安全区，确保完全滑出视口。 */
+  transform: translateY(calc(-100% - 0.75rem - env(safe-area-inset-top)));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  header {
+    transition: none;
+  }
+}
+
 .about-modal-enter-active,
 .about-modal-leave-active {
   transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1);

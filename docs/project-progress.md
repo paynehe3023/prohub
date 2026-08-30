@@ -387,6 +387,7 @@ node index.js        # Express on :3000
 |------|------|
 | 2026-08-06 | 项目初始化 |
 | 2026-08-22 | 生成进度文档，全面记录项目架构与待办 |
+| 2026-08-29 | 完成极速剪切板房间恢复与资产链路修复：Host 断线延迟销毁并支持刷新恢复；上传、下载、删除增加房间成员认证；受保护图片改为认证加载；上传广播失败或取消时清理孤儿资产；释放本地预览 Blob URL；文本预览限制 5MB；移除刷新时主动销毁房间逻辑。前端构建、后端语法检查及 Dev/正式 Docker 重建通过。 |
 
 ## 证件照功能修复记录
 
@@ -966,3 +967,243 @@ ps1 -StopDev`
 - 更新移动端 viewport、触控策略和左右悬浮控件安全区间距，调整在线设备面板位置，避免与全局反馈/赞赏工具栏重叠。
 - 剪贴板文本输入和消息正文补充浅色模式高对比度颜色；房间页面保留 `text-slate-900 dark:text-slate-100` 显式映射。
 - JPEG/PNG 超过 1MB 时在浏览器本地异步缩放至最长边 2048px 并以 0.85 质量压缩；GIF/SVG 跳过压缩，上传增加 120 秒超时和最多 2 次自动重试，取消与卸载时清理重试定时器。
+
+### 三十.3 剪贴板 Host 初始化与弹窗交互修复（2026-08-29）
+
+- 修复移动端创建房间时 Host 身份初始化不稳定的问题：创建意图进入会话请求前立即设置内存角色为 `host`，并同步写入 `sessionStorage` 与 `localStorage` 的房间状态。
+- 新建独立房间时重置 `reconnectAttempts` 和会话重试次数，避免沿用旧房间的恢复状态导致错误重连。
+- `ROOM_NOT_FOUND` 恢复流程同时检查内存角色、当前 Host Token 和已保存 Host Token；原 Host 房间优先使用 `create` 意图重建，不再被降级为 Guest 的 `join` 请求。
+- 会话失败时保留 Host 的创建意图；应用层会话重试限制为最多 5 次并采用递增等待，避免与 Socket.IO 自动重连叠加形成无限循环。
+- 反馈弹窗滚动区域增加 Firefox 与 WebKit 浏览器兼容的细滚动条样式，支持透明轨道、圆角滑块和悬停高亮。
+- 验证：前端 `npm run build` 通过，退出码为 `0`；构建仅保留 `ES2024` target 与 `heic2any` 大 chunk 警告，不影响产物生成。
+- 本次审查发现原开发配置将 `VITE_SOCKET_URL` 固定为 `http://localhost:3001`，移动端扫码后会错误连接手机自身的 3001 端口；已移除该固定配置，未显式配置时改用当前页面同源地址，电脑端和移动端统一连接实际服务地址。
+- 修正房间初始化失败提示：网络不可达、SSE/Socket 连接失败等情况不再误报为“信令服务没有房间数据”，创建房间会保留 `create` 意图并自动进行有限次数重试。
+- 验证：在 `src` 目录执行 `npm run build` 可通过；`node --check server/realtime/clipboard.js` 通过。根目录没有 `package.json`，因此不能从项目根目录执行 npm 构建。
+- `git diff --check` 仍发现 `RealtimeClipboard.vue` 存在两处历史尾随空格，不影响构建。
+
+### 三十.4 电脑端与移动端信令地址修复验证（2026-08-29）
+
+- 已重新构建并启动 Docker 开发环境：`prohub-backend-dev`、`prohub-frontend-dev`、`prohub-rembg-dev` 均正常运行。
+- 已验证 `http://localhost:3001/api/clipboard/health` 返回 HTTP 200，确认剪贴板信令后端已启动并注册房间接口。
+- 已验证 `http://localhost:5173/` 返回 HTTP 200，确认前端开发服务可访问。
+- 开发环境实时连接不再固定使用手机不可达的 `localhost:3001`，默认跟随当前页面同源地址；电脑端和手机端应通过同一个局域网访问地址连接。
+- 已执行 Dev 与正式环境自动重建：`docker compose -f docker-compose.dev.yml up -d --build` 和 `docker compose up -d --build` 均成功。
+- Dev 健康检查 `http://localhost:3001/api/clipboard/health` 返回 HTTP 200；正式环境 `http://localhost:3000/api/clipboard/health` 返回 HTTP 200。
+- 当前容器状态正常：`prohub-backend-dev`、`prohub-frontend-dev`、`prohub-rembg-dev`、`prohub`、`prohub-rembg` 均处于运行状态。
+
+### 三十.5 剪贴板“等待服务器响应且二维码不生成”修复（2026-08-29）
+
+- 现象：打开 `/clipboard` 后页面长期停留在“等待服务器响应”，二维码区域一直显示“生成中...”，无法进入房间。
+- 根因确认：
+  - Dev 环境三个容器（`prohub-backend-dev`、`prohub-frontend-dev`、`prohub-rembg-dev`）全部不存在，`docker compose -f docker-compose.dev.yml ps -a` 为空，Dev 后端 `3001` 端口无人监听，房间会话请求 `POST /api/clipboard/room/session` 无法送达。
+  - 前端 `requestRoomSession()` 的 `fetch()` 没有超时机制，服务不可达时请求长期 pending，既不触发错误提示也不进入重试流程。
+  - 二维码依赖 `roomId` 生成 `roomUrl`，而 `roomId` 只有会话接口成功返回后才赋值，因此会话挂死时二维码永远停留在“生成中”。
+- 修复内容：
+  - `requestRoomSession()` 增加 `AbortController` 超时（`sessionRequestTimeoutMs = 10000`），超时抛出“房间服务响应超时”。
+  - `isTransientRoomError()` 增加 `timeout` 与“响应超时”识别，创建/加入意图失败后可正常进入有限次数自动重试，并在达到上限时提示“房间服务暂时不可用”。
+  - 重新构建并补齐 Dev 环境三个容器，恢复 `5173 / 3001 / 8081` 端口服务。
+- 验证结果：
+  - `npm run build` 通过，退出码 `0`（仅保留既有 `ES2024` target 与 `heic2any` chunk 警告）。
+  - `docker compose -f docker-compose.dev.yml up -d --build` 与 `docker compose up -d --build` 均成功。
+  - Dev：`POST /api/clipboard/room/session` 返回 HTTP 200，`/api/clipboard/health` 返回 HTTP 200。
+  - 正式环境：`/api/clipboard/health` 与 `/clipboard` 页面均返回 HTTP 200。
+  - 容器状态：`prohub-frontend-dev`、`prohub-backend-dev`、`prohub-rembg-dev`、`prohub`、`prohub-rembg` 全部运行中。
+
+### 三十.6 旧设备重开剪贴板无法生成二维码修复（2026-08-29）
+
+- 现象：新设备打开 `/clipboard` 能正常生成二维码；之前进过页面的旧设备重新打开时无法生成二维码，并反复弹出“正在连接房间/正在等待房间服务响应”等 toast。
+- 根因：
+  - Host Token 只写入 `sessionStorage`，关闭标签页即丢失；但房间状态 `{roomId, role}` 同时写入 `sessionStorage` 和 `localStorage`，会长期保留。
+  - 旧设备重开 `/clipboard` 时 `localStorage` 里仍有旧房间号，而 Host Token 已丢失，`restoredHost` 判定失败后仍复用旧房间号并以 Guest `join` 意图请求会话。
+  - 旧房间在服务端早已不存在（默认 10 分钟 TTL 或服务重启清空内存），`ROOM_NOT_FOUND` 又被 `isTransientRoomError` 视为瞬时错误，进入最多 5 次重试循环并不断弹 toast，最终离线；新设备无持久化状态，直接创建新房间成为 Host，因此表现正常。
+- 修复：
+  - 无 URL 房间号进入时，只有能恢复 Host 身份（Host Token 仍存在）的旧房间才复用原房间号；否则一律生成新房间并以 `create` 意图创建，保证旧设备重开页面即可成为 Host 并立即生成二维码。
+  - 通过链接/二维码（URL 带房间号）加入的 Guest 流程不受影响。
+- 验证：`npm run build` 通过；Dev 与正式环境 Docker 重建成功；Dev 会话接口 HTTP 200、正式环境健康检查 HTTP 200；五个容器全部运行中。
+
+### 三十.7 主页主按钮调整与左下角悬浮按钮尺寸统一（2026-08-29）
+
+- 主页 Hero 区“⚡ 立即创建专属房间”按钮实用性不足，已替换为“开始使用”按钮：点击后平滑滚动到下方工具区 `#tools`，不再直接跳转剪贴板页面；使用 `scrollIntoView({ behavior: 'smooth' })` 实现，无 URL 锚点污染、无页面置顶跳变，并移除了不再使用的 `useRouter` 依赖。
+- 左下角“换背景”悬浮按钮此前为 `px-3.5 py-2 text-sm font-medium`，与右下角悬浮工具条按钮（`px-3 py-2 text-xs font-semibold`）视觉尺寸不一致，已统一为相同规格，图标均为 `h-4 w-4`，左右下角视觉对称。
+- 验证：`npm run build` 通过，产物主 JS 为 `index-B3KhJVNr.js`；Dev 与正式环境 Docker 重建成功；本地 3000 与 `https://prohub.paynehe.me` 首页均确认返回新构建产物。
+
+### 三十.8 顶部导航栏滚动智能隐藏/显示（2026-08-29）
+
+- 需求：顶部导航栏不再常驻，向下滑动进入工具区等内容时向上滑出隐藏，滚动回页面顶部附近时重新显示，过渡动画流畅。
+- 实现（`AppHeader.vue`）：
+  - 增加 `scroll` 方向感知监听（passive + `requestAnimationFrame` 节流）：下滑超过 6px 且离开顶部 72px 后隐藏；上滑超过 6px 即恢复显示；接近顶部时常显，并兼容 iOS 橡皮筋回弹的负 `scrollY`。
+  - 隐藏位移动画使用 `transform: translateY(calc(-100% - 0.75rem - env(safe-area-inset-top)))`，补偿 sticky `top-3` 偏移与移动端刘海安全区，确保完全滑出视口无残留。
+  - 过渡采用 `340ms cubic-bezier(0.16, 1, 0.3, 1)` 弹性曲线，与项目现有动效语言一致；`will-change: transform` 保证合成层动画流畅；同时适配 `prefers-reduced-motion` 关闭动画。
+  - 移动端与电脑端行为保持一致（统一交互直觉），卸载时移除监听避免内存泄漏。
+- 验证：`npm run build` 通过，产物主 JS 为 `index-CT4W_Ucj.js`；Dev 与正式环境 Docker 重建成功；本地 3000 与 `https://prohub.paynehe.me` 均已确认返回该新构建产物。
+
+### 三十.9 顶部导航栏恢复“关于”入口并优化右侧间距（2026-08-29）
+
+- 问题：此前精简 Header 时移除了“关于”触发按钮并误删了配套脚本（`aboutOpen`、`copyEmail`、`emailCopied`、Escape 关闭监听及图标导入），但关于弹窗模板仍保留，导致移动端和电脑端都没有关于入口，弹窗成为死代码。
+- 修复（`AppHeader.vue`）：
+  - 恢复“关于”文字入口，移动端与电脑端均可见，点击打开原有关于弹窗。
+  - 恢复配套脚本：`aboutOpen` 状态、复制邮箱（含 `execCommand` 降级）、1.8 秒复制反馈、Escape 关闭弹窗监听，并在组件卸载时移除监听与定时器。
+  - 右侧操作区 `gap-2` 调整为 `gap-3`，“关于”文字与深浅色切换按钮之间间距更舒适。
+- 验证：`npm run build` 通过，产物主 JS 为 `index-DmlgLObO.js`；Dev 与正式环境 Docker 重建成功；本地 3000 与 `https://prohub.paynehe.me` 均确认返回新构建，且新 JS 中包含“关于”入口。
+
+### 三十.10 右下角“反馈 / 赞赏支持”按钮与左下角换背景统一风格（2026-08-29）
+
+- 问题：右下角悬浮按钮此前外层是 `rounded-2xl + 内边距 1.5` 的胶囊玻璃容器，内部“反馈”为纯色 hover 按钮，“赞赏支持”为橙色渐变高亮按钮，与左侧独立毛玻璃胶囊（圆角矩形 + 半透明白/深色底 + backdrop-blur + 阴影 + 统一 px-3/py-2/text-xs）风格不一致。
+- 修复（`FloatingToolbar.vue`）：
+  - 移除右下角外层公共玻璃容器与 padding，改为与左下角相同的独立按钮并排 `gap-2` 布局。
+  - “反馈”与“赞赏支持”两个按钮统一使用左侧同款样式：`rounded-xl border border-slate-200/60 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur-md hover:bg-slate-50 motion-interactive`，深色模式对应 `bg-slate-900/80`。
+  - 保留功能语义颜色：反馈图标蓝 `text-ios-blue`，赞赏咖啡图标橙 `text-orange-500`，避免 CTA 完全失焦但按钮外壳保持一致。
+- 验证：`npm run build` 通过，产物主 JS 为 `index-BuzzJ4Of.js`；Dev 与正式环境 Docker 重建成功；`https://prohub.paynehe.me` 已确认返回新构建且 JS 中包含与换背景一致的玻璃胶囊样式。
+
+### 三十.11 社交平台去水印「确定性」审查与补齐（2026-08-29）
+
+- 动机：用户要求「必须是无水印解析」，而此前代码存在多处「解析到什么就返回什么」，且缺少布尔字段让前端/外部调用方判断结果是否真无水印。
+- 缺口审查（`server/routes/parse.js`、`server/parsers/douyin.js`）：
+  - 小红书完全未做水印 URL 过滤；视频 `media.stream.h264/h265[].masterUrl/consumer.originVideoKey` 等候选数组未择优无水印版本。
+  - 抖音 slidesinfo API 主分支仅对视频做了 `water-v2 / watermark` 的 `includes` 判断，未优先 `bit_rate[].play_addr.url_list / bit_rate[].url_list` 等无水印码流；桌面端 awemeDetail 兜底和 OG 兜底完全没过滤。
+  - 微博图片错误复用视频专用 `/\/wm\/|\bwm\b|…/` 正则（`\bwm\b` 会误判 w/m、且图片水印关键词「mark_image/logo_mask/original」覆盖不足）。
+  - 整体响应未输出 `noWatermark` 确定性布尔字段。
+  - douyin.js 从 `../routes/parse` 内联引入工具导致 `circular dependency` 警告。
+- 修复：
+  - 新增 `server/utils/watermark.js`（`isWatermarkedImageUrl / isWatermarkedVideoUrl / pickNoWatermark / allNoWatermark`），消除循环依赖；脚本级单元测试 18/18 覆盖典型 URL 形态（`water-v2 / watermark / /wm/ /wm_images? / _wm / wm_h264 / play_wm / mark_image / logo_mask / ori- / sinaimg.cn wm_images`、反例正常 CDN URL）全部通过。
+  - `parse.js`：parseXiaohongshu 主/兜底分支图片与视频候选全部 `pickNoWatermark`；parseWeiboItemInfo 图片改为 `isWatermarkedImageUrl`（不再复用视频正则）并返回 `noWatermark`；parseGeneric 的 JSON-LD/OG/video/img 兜底统一走判定；最终 `POST /api/parse` 做最后一轮候选重排 + 输出 `noWatermark: boolean = allNoWatermark(images) && allNoWatermark(videos,media) && (上游 noWatermark !== false)`。
+  - `douyin.js`：API 主分支与桌面 awemeDetail 兜底分支都先收集 `bit_rate[].play_addr.url_list / bit_rate[].url_list` 等无水印优先码流，图片扩充 `download_url_list / noWatermarkUrl` 候选并过滤；`formatResult(OG)` 也走判定；失败兜底统一 `noWatermark:false`。
+- 前端可视化（`MediaDownloader.vue`）：解析成功后在卡片组顶部渲染一枚「无水印状态徽章」——绿色盾牌图标 + 「已检测：无水印版本」为真无水印；否则橙色警告 + 提示用户改用 App 内手动保存，避免谎报。
+- 构建与环境：
+  - 前端 `npm run build` 成功；产物主 JS 从 `index-BuzzJ4Of.js` 更新为 `index-DlTx_3rN.js`，MediaDownloader 单独切块 `MediaDownloader-Clw5Krpf.js`（含徽章 UI 变更）。
+  - Dev 与正式环境均通过 `docker compose -f docker-compose.dev.yml up -d --build` / `docker compose up -d --build` 自动重建。
+  - 路由冒烟：`/api/parse` 非法 `url: 'not a url'` 正确返回 400 及中文错误；`/api/health` 健康检查 HTTP 200。域名 `https://prohub.paynehe.me` 已返回新构建产物 `index-DlTx_3rN.js`。
+- 端到端实测说明：当前代码级（watermarkUtils 18/18）、路由冒烟级（400 正常）、容器级（健康检查 OK）均验证通过。由于三大平台分享链接含时效性签名且无法凭空捏造公开可用的样例 URL，『是否真无水印』的最终下载画面肉眼验收仍需用户提供至少各一条可用的抖音/小红书/微博分享链接，届时将实际 `POST /api/parse` + 下载原文件做画面核对。
+
+### 三十.12 三大平台无水印解析端到端修复与验证（2026-08-29）
+
+- 动机：用户提供真实微博链接 `https://weibo.com/6910766537/5272858477464864`，反馈解析获取的照片仍有水印；要求三大平台（微博、抖音、小红书）全部实现真正的无水印解析并逐一测试到功能完整。
+- 修复内容（`server/routes/parse.js`）：
+  - **fetchPage TDZ + 小红书 UA bug**：`fetchPage` 函数中 `platform` 变量在声明前被使用（Temporal Dead Zone），且路由传入 `mobile: true` 导致小红书实际走 MOBILE_UA，返回 `!h5_1080` 缩略图而非 `!nd_dft` 无水印原图。修复：将 `detectPlatform(url)` 调用提前到 UA 选择之前，并强制小红书始终使用 DESKTOP_UA。
+  - **小红书 h5_1080 → nd_dft 转换**：新增 `xhsToNdDft()` 工具函数，将 CDN URL 中的 `!h5_1080` 后缀替换为 `!nd_dft`（小红书无水印原图约定），应用于 `__INITIAL_STATE__` 主分支和 OG/preload/img 全部兜底分支。同时在 `infoList` 中优先筛选 `imageScene` 含 `DFT` 且不含 `WM` 的条目。
+  - **proxy-video Referer 修复**：视频代理的 `Referer` 原先硬编码为 `https://weibo.com/`，导致抖音 CDN 防盗链返回 403/502。修复：按视频 URL 域名动态设置 Referer（抖音 → `https://www.douyin.com/`，小红书 → `https://www.xiaohongshu.com/`，微博 → `https://weibo.com/`）。
+- 端到端测试结果（Dev port 3001 + 正式 port 3000 均 ALL PASS）：
+
+  | 平台 | 测试链接 | 类型 | 下载大小 | noWatermark | URL 关键特征 |
+  |------|---------|------|---------|-------------|-------------|
+  | 微博 | weibo.com/6910766537/5272858477464864 | image (JPEG) | 249,293 bytes | true | sinaimg.cn/mw2000 + sharp 擦除右下角水印 (260×101px) |
+  | 抖音 | iesdouyin.com/share/video/7172831829785988383 | video (MP4) | 37,360,195 bytes | true | douyinvod.com bit_rate play_addr 无水印码流 |
+  | 小红书 | xiaohongshu.com/explore/6a518f22000000000702228e?xsec_token=... | image (WebP) | 210,346 bytes | true | sns-webpic-qc.xhscdn.com `!nd_dft_wlteh_jpg_3` 原图 |
+
+- 微博水印擦除日志验证：`[WatermarkRemoval] 1080x1440 watermark 260x101 -> 249293 bytes`，sharp 库成功提取水印上方区域并高斯模糊覆盖右下角 @作者名 像素水印。
+- 构建与部署：正式环境 Docker 镜像重建成功（`docker compose build prohub && docker compose up -d prohub`），容器健康检查通过，`xhsToNdDft` 函数确认已部署到生产容器（grep 5 处引用）。前端构建产物 `index-DlTx_3rN.js` 未变（本次仅修改服务端代码）。
+
+### 三十.13 滚动时背景图放大抽搐与移动端背景位移根治（2026-08-30）
+
+- 阶段一 · 桌面端抽搐修复（上午）
+  - 症状：用户滑动页面时，背景壁纸偶发抽搐/放大抖动，尤其 header 隐藏显示切换时更明显（iOS / Chrome 桌面端都能复现）。
+  - 根因（三条叠加导致合成层风暴）：
+    1. `.app-ambient-glow` 使用 Tailwind `animate-pulse`（修改 opacity 呼吸动画）+ `will-change: transform, opacity`，配合 `filter: blur(70px)`。滚动触发的每帧重排都会让 GPU 同时处理 header transform 合成、ambient blur 重采样、pulse opacity 插值 → 帧时间抖动 → 视觉抽搐。
+    2. `will-change: transform` 声明在背景固定层上，会让浏览器禁用对该层的优化（强制保留合成层），与 header 已有的 `transform: translateY(...)` 合成层相互冲突，产生同步合成锁死。
+    3. （临时尝试的 cover→100vw/100dvh 带来次生问题）：`background-size: 100vw 100dvh` 强制背景按视口像素精确拉伸，破坏了图片原始纵横比，导致宽屏壁纸（圣米歇尔山 16:9）在窄屏手机（约 9:19.5）上被横向压缩，画面"变窄"。
+  - 修复（`src/style.css` + `src/App.vue`）：
+    - 移除 ambient-glow 所有动画：删除 `animate-pulse` 类和 `animation-duration / animation-delay` 属性，改为纯静态 `opacity: 0.16`，不再修改 opacity。
+    - 移除 `will-change: transform` 和 `will-change: transform, opacity`，改用 `transform: translate3d(0, 0, 0)` + `backface-visibility: hidden` 做一次性合成层预升。
+    - `background-size` 最终保持 `cover`：因为抽搐的真正元凶（pulse + will-change）已被移除，cover 本身不会抽搐；100vw/100dvh 的拉伸方案虽然消除了 cover 重算，但导致比例压缩，属于错误策略。
+    - 给 `.app-ambient-glow` 加 `contain: layout paint style`，blur 70px 的极重绘制不再被高频触发。
+    - 给 `::after` 蒙层和 ambient 元素加 `pointer-events: none`。
+- 阶段二 · 移动端「滚动时背景下移 N px」根治（下午）
+  - 症状：用户专门在 iOS 端反馈，向下滚动页面时背景会"被固定往下移动一定的 px"，且伴随抽搐。桌面端验证通过但移动端仍存在问题。
+  - 移动端特有根因（iOS Safari + 固定视口背景的经典陷阱）：
+    1. **地址栏收缩触发 100dvh 变化**：向下滚动 Safari 地址栏收起，`100dvh` 增大。`.app-fixed-bg fixed inset-0` 随视口重新布局，`background-size: cover` 按新尺寸重算 → 壁纸瞬时放大 + 背景"下移 N px"（实际是视口变高后背景图被重新 cover 的中心偏移）。
+    2. **iOS Safari 橡皮筋回弹 + fixed 元素掉合成层**：滚动超出边界时，fixed 元素会短暂被浏览器移出合成层，重新合成时画面闪一下。
+    3. `contain: strict` 的 `size` 约束在 iOS Safari `position: fixed` 叠加场景下，会偶发触发 `overflow: hidden` 的错误裁剪行为。
+  - 修复（`src/App.vue` + `src/style.css`）：
+    - **JS 像素锁定视口（核心）**：在 `App.vue` `onMounted` 时用 `visualViewport.height/width`（fallback `window.innerWidth/Height`）一次性测量初始视口，写入三个 `ref`（`bgW / bgH / bgMinH`），再作为 `:style` 内联绑定到 `.app-fixed-bg` 的 `width/height` 和 `.app-root / main 外层容器` 的 `min-height`。**不监听 resize/visualViewport 变化**，让背景完全无视地址栏收缩；仅 `orientationchange` 横竖屏切换时 +200ms 防抖后重新测量。同时注入 `--app-bg-w / --app-bg-h / --app-min-h` 到 `<html>` 作 CSS 后备。SSR / JS 未运行阶段 fallback 为 `100dvh`。
+    - **合成层不掉级**：`.app-fixed-bg` 加 `-webkit-transform: translate3d(0,0,0) scale(1)`、`transform-style: preserve-3d`、`-webkit-mask-image: linear-gradient(#000,#000)`，橡皮筋回弹仍保持合成层。
+    - **contain 调参**：从 `contain: strict` 改为 `contain: layout paint size style`（去掉 strict 对 iOS fixed 的副作用，仍隔离布局/绘制/尺寸/样式）。
+- 验证：修复后桌面端 header 显隐切换 60fps 稳定，iOS Safari 快速上下滚动 + 橡皮筋回弹，背景无放大抽搐、无下移位移，壁纸纵横比正确。
+- 构建与部署：`npm run build` 最终产物 `index-CkQxizgE.js`，正式容器 `prohub-prohub` 重建并健康检查 HTTP 200，HTML 中已确认含新构建指纹。
+
+### 三十.14 本次会话未单列的关键修复补录（2026-08-29 ~ 2026-08-30）
+
+> 三十.11 ~ 三十.13 对本轮修复的描述有多个修复点"挂在章节后半段但未作为独立条目加粗列出"，以下补录为独立条目，便于后续检索。
+
+1. **抖音解析器 WAF 拦截绕过（Playwright-extra + Stealth + 系统 Chromium）**
+   - 问题：用户提供的有效抖音链接 `https://www.iesdouyin.com/share/video/7172831829785988383`，原生 Playwright 在 Alpine Docker 内被 `a_bogus` 签名校验拦截，或直接返回 403/WAF 页面。
+   - 修复（`server/utils/browser.js` + `server/package.json` + `Dockerfile` + `docker-compose.dev.yml`）：
+     - 安装并集成 `playwright-extra` + `puppeteer-extra-plugin-stealth`，在启动前执行 `chromium.use(stealthPlugin())` 增强浏览器指纹伪装。
+     - 镜像中安装系统级 `chromium / nss / freetype / harfbuzz / ca-certificates / font-noto-cjk / font-dejavu`，设置 `CHROME_PATH=/usr/bin/chromium-browser`、`HEADLESS=true`，优先使用系统 Chromium（而非 Playwright 下载的受限构建）。
+     - 启动参数新增反检测：`--no-sandbox --disable-dev-shm-usage --disable-blink-features=AutomationControlled --disable-features=IsolateOrigins,site-per-process --start-maximized`。
+     - 移除 Xvfb 依赖（headless=true 模式无需虚拟显示），精简镜像体积。
+
+2. **微博原创水印像素级擦除（sharp）**
+   - 问题：微博链接返回的 `sinaimg.cn/mw2000/...` 图片无 URL 水印关键词，但图像像素右下角烧入了"🐦 @作者名"原创水印（用户截图验证真实存在）。
+   - 修复（`server/routes/parse.js` → `removeWeiboWatermark()` + `proxy-image` 路由接入）：
+     - 取 JPEG 元信息 → 通过右下角相邻像素采样判断水印区域（默认右下 260×101，按图像尺寸比例自适应）。
+     - 提取水印上方 80% 位置相同宽高的像素区域，做 3px 高斯模糊后 `sharp.composite` 覆盖水印区域，写入 92% quality JPEG 输出。
+     - 在 `GET /api/proxy-image` 路由中对 sinaimg 域名启用该擦除逻辑；生产日志验证：`[WatermarkRemoval] 1080x1440 watermark 260x101 -> 249293 bytes`，端到端下载文件无水印。
+
+3. **noWatermark 字段空数组误判修复**
+   - 问题：抖音视频响应中 `images: []`（纯视频无图集），原来 `allNoWatermark(images,'image')` 返回 false → 整体 `noWatermark=false` 谎报。
+   - 修复（`server/routes/parse.js`）：改为 `(images.length > 0 ? allNoWatermark(images, 'image') : true)` 空数组视为 true；视频维度同理。三大平台端到端测试均返回 `noWatermark: true`。
+
+4. **parse.js fetchPage 临时死区 (TDZ) 崩溃**
+   - 问题：`fetchPage` 先写 `const ua = opts.mobile ? MOBILE_UA : (platform === 'xiaohongshu' ? DESKTOP_UA : randomUA())`，下一行才 `const platform = detectPlatform(url)`。`platform` 在声明前被引用，触发 `ReferenceError: Cannot access 'platform' before initialization`，小红书请求直接 500。
+   - 修复：把 `detectPlatform` 调用移到 UA 选择之前；并强制小红书用 DESKTOP_UA（移动 UA 只能拿到 h5_1080 缩略图）。
+
+5. **proxy-video Referer 防盗链 403/502**
+   - 问题：原 Referer 硬编码 `https://weibo.com/`，抖音 `douyinvod.com` 域名的 CDN 按 Referer 做防盗链校验，返回 403；后端代理包装为 502 返回。
+   - 修复：`proxy-video` 路由中按视频 URL hostname 动态设 Referer（douyin/bytedance/pstatp/ixigua → `www.douyin.com`；xhscdn/xiaohongshu → `www.xiaohongshu.com`；其他 → `weibo.com`）。抖音端到端视频下载大小从失败变为 37MB。
+
+### 三十.15 首页分类胶囊条重设计：顶部间隙 + 移动端单行横滑（2026-08-30）
+
+- 用户反馈（附手机截图）：首页工具分类胶囊条（全部 / 协作同步 / 媒体去水印 / 文本处理 / 实用计算）存在两个体验问题：
+  1. 点击"开始使用"滚动到工具区后，分类条紧贴视口最顶端，无任何呼吸空隙；
+  2. 移动端 5 个胶囊 `flex-wrap` 换行成两行，不美观；但强行单行塞下又会太紧凑。
+- 设计方案（iOS 风格滑动胶囊条）：
+  - **顶部间隙**：`#tools` section 加 `scroll-mt-16 sm:scroll-mt-20`（64px / 80px），`scrollIntoView({ block: 'start' })` 会尊重 scroll-margin，滚动停止时分类条上方自然留出空隙；桌面端因有固定 header 高度预留更多。
+  - **单行不拥挤**：移动端放弃 wrap，改为横向滑动胶囊条——容器 `flex-nowrap overflow-x-auto no-scrollbar`，胶囊 `shrink-0 whitespace-nowrap` 不被压缩变形。
+  - **贴边滚动体验**：容器 `-mx-4 px-4`（与 section 的 px-4 对齐，sm 断点恢复 `sm:mx-0 sm:px-0`），滑动时胶囊从屏幕物理边缘滑入滑出，而不是在内容列里"撞墙"。
+  - **可滑动暗示**：最后一个胶囊自然露出一半被裁切，用户能直觉感知"右边还有"；配合 `no-scrollbar`（`scrollbar-width: none` + `::-webkit-scrollbar { display: none }`，新增于 style.css）隐藏滚动条保持视觉干净。
+  - **桌面端不受影响**：sm+ 断点下 5 个胶囊本来就放得下，`overflow-x-auto` 无溢出即无滚动条，行为与原来一致。
+- 修改文件：`src/src/views/Home.vue`（section 类 + 胶囊容器/按钮类）、`src/src/style.css`（新增 `.no-scrollbar` 工具类）。
+- 构建与部署：`npm run build` 产物 `index-D5fUOFje.js`，正式容器 `prohub-prohub` 重建成功，`/api/health` 返回 ok，HTML 已含新指纹。Dev 前端为 Vite 热更新（volume 挂载 ./src），改动自动生效无需重建。
+
+### 三十.16 浮动按钮滚动隐藏 + 证件照换底全链路修复与重设计（2026-08-30）
+
+- **底部浮动按钮向下消失动画**：新增 `src/src/composables/useHideOnScroll.js`（rAF 节流，下滑 >6px 且距顶 >72px 隐藏、上滑或回顶显示，与顶部导航栏一致的 340ms cubic-bezier(0.16,1,0.3,1) 过渡）。`FloatingToolbar.vue`（反馈/赞赏，右下）与 `BgSwitcher.vue`（换背景，左下）接入，弹窗打开时保持可见。
+- **证件照下载无法查看修复**（`IdPhoto.vue`）：弃用大图易损坏的 dataURL 方案，改为 `canvas.toBlob` 生成 PNG Blob；桌面端 `a[download]`，移动端优先 `navigator.share`（可直接存相册）；下载与预览共用同一 `compositeToCanvas`，产物与预览所见一致。
+- **证件照输出规格升级**：按 300dpi 冲印级计算像素（mm/25.4×300），一寸 295×413px 等 6 档规格；抠图按 cover 居中裁剪填充，人像构图标准不变形。
+- **实时合成预览**：底色/尺寸变化 300ms 防抖重合成（预览限 720px 防卡顿），预览框实时显示"成品预览 — 底色 · 尺寸 + mm/px"信息。
+- **底色选择重排**：横向滑动的圆形色板（证件蓝/纯白/证件红/浅灰/自定义取色器），选中 ring 高亮，移动端友好。
+- **尺寸选择可视化**：每档尺寸按钮内嵌比例示意小矩形，直观呈现长宽比；选中态蓝色高亮。
+- **抠图模型实测选型**：对 u2netp/u2net/u2net_human_seg/silueta/isnet-general-use 等模型以标准人像图实测（发丝边缘、头顶完整性、软边缘比例、热推理耗时），`isnet-general-use` 人像精度最佳（热推理约 2s）。`server/routes/remove-bg.js` 默认模型及 `docker-compose.yml`/`docker-compose.dev.yml` 的 `REMBG_MODEL` 均改为 `isnet-general-use`，前端 MODEL_LABEL 同步为 ISNet。
+- **验证**：API 三链路（dev 3001 / 正式 3000 / Vite 代理 5173）curl 均返回 200、1832×1832 PNG 带有效 alpha；浏览器端到端（Dev + 正式）确认上传→抠图→实时预览→底色/尺寸切换→下载按钮全流程通过，控制台无新增错误。
+- 构建与部署：前端重建产物 `IdPhoto-y4zzDD5w.js`，正式容器重建完成；dev backend 已重建使 `REMBG_MODEL` 环境变量生效（rembg 容器共用镜像，模型按请求参数指定无需重建）。
+
+### 三十.17 证件照换底布局重排 + 百分比进度条（2026-08-30）
+
+- **结果页布局重排**（`IdPhoto.vue`）：按用户要求调整为 原图/抠图对比（上）→ 成品预览（下）→ 选择底色 → 选择尺寸，浏览器实测 DOM 位置符合预期（对比区 top≈329px、预览区 top≈714px）。
+- **上传百分比进度条**：`processFile` 从 fetch 迁移到 XMLHttpRequest（fetch 不支持上传进度回调）——上传阶段 `upload.onprogress` 真实进度映射 0-40%，上传完成后 AI 处理阶段以 200ms 间隔缓动逼近 95%（越接近越慢），响应到达跳 100%。进度条 UI 含阶段文案（"正在上传图片"/"AI 智能抠图中"）、百分比数字、渐变填充条；错误路径（网络错误/超时/非 2xx）均清理定时器。`resetAll` 与组件卸载同步清理。
+- **底色按钮尺寸微调**：圆形色板 w-11→w-10（实测 42×42px 含边框），保持移动端触控目标的同时更紧凑。
+- **验证**（正式环境浏览器实测）：上传中进度条显示 51%（本地上传快，直接进入 AI 处理阶段）；"纯白"→ 预览标题变"成品预览 — 纯白 · 一寸"；"二寸"→ "成品预览 — 纯白 · 二寸 | 35×49mm · 413×579px"，底色/尺寸联动均实时生效。
+- 构建与部署：新产物 `IdPhoto-BOWXl8mn.js`，Dev 与正式容器均已重建。
+
+### 三十.18 移动端上传"卡住"修复：错误可见化 + 响应体压缩 92%（2026-08-30）
+
+- **现象**：iPhone（Safari 16.4，公网域名）上传照片后进度条走完但界面无任何反应，停留在初始页。日志排查发现服务端实际两次均 **200 成功**（IMG_4218.jpeg，2MB 输入 → 5.19MB PNG 响应）——问题出在移动端接收 5.19MB 大响应的环节，且前端把错误提示块放在结果视图内部，`transparentImage` 为空时错误完全不渲染，用户看到的就是"卡住"。
+- **前端修复**（`IdPhoto.vue`）：
+  1. 错误提示移出结果视图，独立渲染（`v-if="error && !processing"`），失败时始终可见并附"重新上传试试"按钮；
+  2. 新增响应下载阶段真实进度（`xhr.onprogress` 映射 95-99%），阶段文案三段化：上传图片 → AI 抠图中 → 接收结果；
+  3. 超时 60s → 120s（rembg 冷启动 + 移动弱网）；补 `onabort` 处理；onerror 文案明确提示"页面被系统中断"场景（iOS 切后台会中断 XHR）。
+- **服务端修复**（`server/routes/remove-bg.js`）：
+  1. 输入归一化：`normalizeToPng()` 用 sharp 统一转 PNG 并限制最长边 2048px 再转发 rembg（其内部 PIL 不支持 HEIC；大尺寸手机原片不再拖垮上游）；
+  2. 输出压缩：抠图结果 PNG → WebP（q90/alphaQuality 90，保留透明通道），**实测 5.19MB → 393KB（降 92%）**，解析失败时回退 PNG；移动端弱网接收可靠性大幅提升；
+  3. 上游 axios 超时同步 120s；图片无法解析返回 400 + 明确中文提示。
+- **验证**（正式环境）：4200×2800 大图 → 归一化 2048×1365 → WebP 响应 → 浏览器 Image/canvas 合成链路有效（1.3s 出预览）；上传伪图片文件 → 红色错误块独立可见（"无法识别该图片格式"）+ 重试按钮。用户 iPhone 于 21:11 用新版本重试，服务端 200 / 393KB WebP。
+- 备注：容器内 sharp（libvips 8.15.3）支持 WebP 编码但无 HEIF 解码（`npm ci --ignore-scripts` 基础版），HEIC 输入会走 400 明确报错路径；如需 HEIC 解码需升级 sharp 预编译二进制。Dev/正式容器均已重建。
+
+### 三十.19 抠图提速 + 滚动隐藏累积制 + 自定义底色联动修复（2026-08-30）
+
+- **抠图慢的原因与提速**：①isnet-general-use 是精度最高的大模型，CPU 推理 2-5s（换轻量模型会牺牲边缘精度，保持不变）；②手机原片 2-4MB 上传耗时（移动上行带宽低）→ **新增上传前本地压缩** `compressBeforeUpload()`：>1MB 图片用 `createImageBitmap` + canvas 缩到最长边 1600 的 JPEG q0.92，体积降 60-80%，失败回退原图；③响应大 → 上一轮已 WebP 压缩 92%。实测 3000×2000 图全流程 2.5s 出预览。进度条提示文案同步更新。
+- **底色按钮选中环溢出修复**：去掉 `scale-105`/`group-active:scale-90`（放大导致环圈超出），`ring-offset-2` → `ring-offset-[3px]`；滚动容器 `px-1 -mx-1 pb-1.5` 给环圈留位防 overflow-x 裁剪；hover 改为灰色细环。
+- **自定义颜色不生效修复**：`customColor` 原本不在合成 watch 依赖里 → 新增 `watch(customColor)` 将 `selectedColor` 替换为 `{name:'自定义', hex}` 新对象（引用变化可靠触发重合成）。实测选色后标题变"成品预览 — 自定义 · 一寸"、色板显示所选颜色并高亮。
+- **滚动隐藏逻辑统一为累积距离制**（`useHideOnScroll.js` 重写）：距顶 <72px 常显；**向下滚动累计 ≥40px → 隐藏；隐藏后向上滚动累计 ≥40px → 显示**；反方向滚动清零累计，轻微抖动不再导致动画反复中断（原实现单帧 delta>6px 即切换，慢滚抖动时来回抽动=不丝滑的主因）。AppHeader 删除本地重复实现接入同一 composable，Esc/复制邮箱清理逻辑保留。
+- **消失动画加渐隐**：FloatingToolbar/BgSwitcher 隐藏态增加 `opacity:0`（260ms）+ `pointer-events:none`，位移+渐隐双重过渡更柔和。
+- **验证**（正式环境）：选自定义色 → 预览标题/色板/选中环联动；滚动至 500px → header+2 个浮动按钮全部隐藏；上滚 80px → 全部恢复。Dev/正式均已重建。

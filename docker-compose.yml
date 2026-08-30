@@ -21,6 +21,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - CHROME_PATH=/usr/bin/chromium-browser
+      - HEADLESS=true
       - REMBG_URL=http://rembg:7000
       - SMTP_HOST=${SMTP_HOST:-smtp.qq.com}
       - SMTP_PORT=${SMTP_PORT:-465}
@@ -28,7 +30,7 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
       - FEEDBACK_FROM=${FEEDBACK_FROM:-}
-      - REMBG_MODEL=u2netp
+      - REMBG_MODEL=isnet-general-use
     restart: unless-stopped
     depends_on:
       - rembg

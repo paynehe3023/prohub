@@ -10,17 +10,19 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 
-# 安装 Chromium（Playwright 抖音解析需要）
-RUN apk add --no-cache chromium
+# 系统 chromium + 中文字体（headless + stealth 即可绕过抖音 WAF，无需 Xvfb）
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont font-noto-cjk font-dejavu
 
 # Copy backend
 COPY server/package.json server/package-lock.json* ./server/
 WORKDIR /app/server
 RUN npm ci --ignore-scripts --omit=dev 2>/dev/null || npm install --omit=dev
+
 COPY server/ .
 
-# 设置 Chromium 环境变量
+# 使用系统 chromium（/usr/bin/chromium-browser），headless + stealth 模式
 ENV CHROME_PATH=/usr/bin/chromium-browser
+ENV HEADLESS=true
 
 # Copy built frontend to backend's public dir
 COPY --from=frontend-builder /app/frontend/dist /app/server/public

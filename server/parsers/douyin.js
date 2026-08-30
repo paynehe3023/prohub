@@ -1,18 +1,40 @@
 /**
  * 抖音 Playwright 解析器
- * 使用 headless Chrome 绕过 WAF，提取视频/图文数据
+ * 策略：桌面 UA + 先访问主页获取 cookie + douyin.com/video/{id} + 拦截 aweme detail API
  */
-const { createPage } = require('../utils/browser');
+const { getBrowser } = require('../utils/browser');
+const axios = require('axios');
+const {
+  isWatermarkedImageUrl,
+  isWatermarkedVideoUrl,
+  pickNoWatermark,
+  allNoWatermark,
+} = require('../utils/watermark');
 
 const PARSE_TIMEOUT = 45000;
-const MAX_RETRIES = 2;
+const MAX_RETRIES = 1;
 const VERSION_NOTICE_PATTERN = /版本过低[，,]\s*升级后可展示全部信息/g;
 
-/**
- * 解析抖音分享链接
- * @param {string} url - 抖音分享链接 (v.douyin.com/...)
- * @returns {Promise<object>} 解析结果
- */
+const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+const STEALTH_SCRIPT = `() => {
+  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  Object.defineProperty(navigator, 'plugins', {
+    get: () => [
+      { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfedpexojeelbfhkbhnphlib', description: '' },
+      { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+    ],
+  });
+  Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
+  window.chrome = { runtime: {}, app: { isInstalled: false }, csi: () => {}, loadTimes: () => {} };
+  const origQuery = window.navigator.permissions && window.navigator.permissions.query;
+  if (origQuery) {
+    window.navigator.permissions.query = (p) =>
+      p.name === 'notifications' ? Promise.resolve({ state: Notification.permission }) : origQuery(p);
+  }
+}`;
+
 function cleanDouyinText(value) {
   return String(value || '')
     .replace(VERSION_NOTICE_PATTERN, '')
@@ -31,218 +53,195 @@ function applySharedCaption(result, sharedCaption) {
   };
 }
 
+/**
+ * 从各种 URL 格式提取抖音视频 ID
+ */
+function extractDouyinVideoId(url) {
+  let m = url.match(/\/(?:video|share\/video)\/(\d+)/);
+  if (m) return m[1];
+  m = url.match(/[?&](?:item_id|aweme_id)=(\d+)/);
+  if (m) return m[1];
+  m = url.match(/\/note\/(\d+)/);
+  if (m) return m[1];
+  return '';
+}
+
+/**
+ * 跟随短链重定向获取真实 URL
+ */
+async function resolveShortUrl(url) {
+  if (!/v\.douyin\.com|iesdouyin\.com\/share/i.test(url)) return url;
+  try {
+    const res = await axios.get(url, {
+      headers: { 'User-Agent': DESKTOP_UA, 'Accept': 'text/html,*/*;q=0.8' },
+      timeout: 10000,
+      maxRedirects: 8,
+      responseType: 'text',
+      validateStatus: s => s < 500,
+    });
+    return res.request?.res?.responseUrl || res.request?.path || url;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * 解析抖音分享链接
+ * @param {string} url - 抖音分享链接
+ * @param {string} sharedCaption - 分享文案
+ * @returns {Promise<object>} 解析结果
+ */
 async function parseDouyin(url, sharedCaption = '') {
+  // 1. 提取 video ID（短链先跟随重定向）
+  let realUrl = url;
+  if (/v\.douyin\.com/i.test(url)) {
+    realUrl = await resolveShortUrl(url);
+  }
+  const videoId = extractDouyinVideoId(realUrl) || extractDouyinVideoId(url);
+  if (!videoId) {
+    return applySharedCaption({
+      title: '抖音',
+      description: '无法识别抖音视频 ID，请确认链接正确。',
+      author: '', cover: '', video: '', images: [], type: 'unknown', media: [], noWatermark: false,
+    }, sharedCaption);
+  }
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    let pageCtx = null;
-    let apiData = null;
+    let context = null;
+    let targetApiData = null;
+    let lastApiData = null;
     try {
-      console.log(`[Douyin/Playwright] 尝试 #${attempt + 1}: ${url.slice(0, 60)}`);
-      // 先创建浏览器（不导航）
-      const browser = await (require('../utils/browser').getBrowser)();
-      const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-        viewport: { width: 390, height: 844 },
-        deviceScaleFactor: 3,
+      console.log(`[Douyin] 尝试 #${attempt + 1}: videoId=${videoId}`);
+      const browser = await getBrowser();
+      context = await browser.newContext({
+        userAgent: DESKTOP_UA,
+        viewport: { width: 1920, height: 1080 },
         locale: 'zh-CN',
         timezoneId: 'Asia/Shanghai',
       });
       const page = await context.newPage();
-      await page.addInitScript(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      });
-      pageCtx = { page, context };
+      await context.addInitScript(STEALTH_SCRIPT);
 
-      // 在导航前设置 API 响应拦截
+      // 拦截 aweme detail API 响应（广泛匹配）
       page.on('response', async (response) => {
         const reqUrl = response.url();
-        if (reqUrl.includes('slidesinfo') || reqUrl.includes('aweme/v1/web/aweme/detail') || reqUrl.includes('aweme/post') || reqUrl.includes('aweme/favorite') || reqUrl.includes('aweme/v1/web/aweme/') || reqUrl.includes('aweme/v1/web/note/') || reqUrl.includes('api/note') || reqUrl.includes('web/api/v2/aweme')) {
+        if (reqUrl.includes('aweme') && (reqUrl.includes('detail') || reqUrl.includes('post') || reqUrl.includes('item'))) {
           try {
             const json = await response.json();
-            if (json) {
-              apiData = json;
-              console.log('[Douyin] API 捕获:', reqUrl.slice(0, 80), '| 数据:', JSON.stringify(json).slice(0, 100));
+            if (json?.aweme_detail) {
+              lastApiData = json;
+              const id = String(json.aweme_detail.aweme_id || json.aweme_detail.item_id || '');
+              if (id === videoId) {
+                targetApiData = json;
+                console.log('[Douyin] 捕获目标视频 API');
+              }
+            } else if (json?.aweme_details) {
+              for (const d of json.aweme_details) {
+                const id = String(d.aweme_id || d.item_id || '');
+                if (id === videoId) {
+                  targetApiData = { aweme_detail: d };
+                  console.log('[Douyin] 捕获目标视频 API (multi)');
+                }
+              }
             }
           } catch {}
         }
       });
 
-      // 导航
-      await page.goto(url, { waitUntil: 'networkidle', timeout: PARSE_TIMEOUT }).catch(() => {});
-      // 如果还在加载中，等待空闲
-      try { await page.waitForLoadState('networkidle', { timeout: 10000 }); } catch {}
+      // 2. 先访问主页获取 cookie
+      console.log('[Douyin] 访问主页获取 cookie...');
+      await page.goto('https://www.douyin.com/', { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+      await page.waitForTimeout(5000);
 
-      // 等待页面渲染（最长 10 秒）
-      await page.waitForTimeout(8000);
+      // 3. 导航到视频页面
+      const videoPageUrl = `https://www.douyin.com/video/${videoId}`;
+      console.log(`[Douyin] 访问视频页面: ${videoPageUrl}`);
+      await page.goto(videoPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
 
-      // 提取数据（先检查 API 拦截的数据）
-      let data = apiData;
-      if (!data) {
-        data = await page.evaluate(() => {
-          try {
-            const el = document.getElementById('__INITIAL_STATE__');
-            if (el) return JSON.parse(el.textContent || '{}');
-          } catch {}
-          try { if (window.__INITIAL_STATE__) return window.__INITIAL_STATE__; } catch {}
-          try {
-            const el = document.getElementById('__RENDER_DATA__');
-            if (el) {
-              const decoded = decodeURIComponent(el.textContent || '');
-              return JSON.parse(decoded);
-            }
-          } catch {}
-          try { if (window._SSR_DATA) return window._SSR_DATA; } catch {}
-          // 尝试找到 <script> 中包含 aweme_detail 的 JSON
-          try {
-            const scripts = document.querySelectorAll('script');
-            for (const s of scripts) {
-              const t = s.textContent || '';
-              if (t.includes('aweme_detail') || t.includes('__INITIAL_STATE__')) {
-                const m = t.match(/window.__INITIAL_STATE__s*=s*({[sS]+?});s*$/m);
-                if (m) return JSON.parse(m[1]);
-              }
-            }
-          } catch {}
-          return null;
-        });
+      // 4. 等待 API 响应
+      for (let i = 0; i < 8; i++) {
+        await page.waitForTimeout(3000);
+        console.log(`[Douyin] ${(i + 1) * 3}s: target=${!!targetApiData} last=${!!lastApiData}`);
+        if (targetApiData) break;
       }
 
-      // 如果还没数据，等待更多时间
-      if (!data) {
-        console.log('[Douyin] 等待页面渲染...');
-        await page.waitForTimeout(5000);
-        data = await page.evaluate(() => {
-          try { if (window.__INITIAL_STATE__) return window.__INITIAL_STATE__; } catch {}
-          try { if (window._SSR_DATA) return window._SSR_DATA; } catch {}
-          return null;
-        });
-      }
-
-      // 如果还没数据，尝试拦截 API 响应
-      if (!data) {
-        console.log('[Douyin] 尝试从 API 响应提取...');
-        data = await page.evaluate(() => {
-          try {
-            const scripts = document.querySelectorAll('script');
-            for (const s of scripts) {
-              const t = s.textContent || '';
-              if (t.includes('aweme_detail') || t.includes('video')) {
-                const m = t.match(/window\.__INITIAL_STATE__\s*=\s*({[\s\S]+?});/);
-                if (m) return JSON.parse(m[1]);
-              }
-            }
-          } catch {}
-          return null;
-        });
-      }
-
-      // 提取 OG 标签（兜底） + 页面 DOM 数据
-      if (!data || !data.awemeDetail) {
-        const ogData = await page.evaluate(() => {
-          const get = (sel) => {
-            const el = document.querySelector(sel);
-            return el ? el.getAttribute('content') || '' : '';
-          };
-          return {
-            title: get('meta[property="og:title"]') || document.title,
-            description: get('meta[property="og:description"]') || get('meta[name="description"]'),
-            image: get('meta[property="og:image"]'),
-            video: get('meta[property="og:video"]') || get('meta[property="og:video:url"]'),
-            url: get('meta[property="og:url"]'),
-          };
-        });
-        // 从 DOM 提取图片（slides 页面可能有 img 标签）
-        // 从 slides 页面提取图片（抖音图文有专门的图片列表）
-        if (!ogData.image || !ogData.images) {
-          const slidesImgs = await page.evaluate(() => {
-            // 查找 slide 容器中的图片
-            const containers = document.querySelectorAll('[class*="slide"], [class*="image"], [class*="media"], .swiper-slide, [class*="carousel"]');
-            const urls = new Set();
-            for (const c of containers) {
-              const imgs = c.querySelectorAll('img');
-              imgs.forEach(i => { if (i.src && i.src.startsWith('http')) urls.add(i.src); });
-            }
-            // 也找所有大图
-            document.querySelectorAll('img[src*="douyinpic"], img[src*="pstatp"]').forEach(i => {
-              if (i.src && i.src.startsWith('http')) urls.add(i.src);
-            });
-            return Array.from(urls).filter(u => !u.includes('avatar') && !u.includes('logo')).slice(0, 50);
-          });
-          if (slidesImgs.length > 0) {
-            ogData.images = slidesImgs;
-            ogData.image = ogData.images[0];
-          }
-        }
-        // 查找 video 标签
-        if (!ogData.video) {
-          const videoSrc = await page.evaluate(() => {
-            const v = document.querySelector('video source');
-            return v ? v.src : (document.querySelector('video')?.src || '');
-          });
-          if (videoSrc) ogData.video = videoSrc;
-        }
-        if (!ogData.image) {
-          const domImg = await page.evaluate(() => {
-            const allImgs = Array.from(document.querySelectorAll('img[src]'));
-            return allImgs.map(i => i.src).filter(s => {
-              if (!s) return false;
-              if (s.includes('avatar') || s.includes('logo') || s.includes('icon') || s.includes('pixel')) return false;
-              return s.includes('douyin') || s.includes('douyinpic') || s.includes('douyincdn') || s.includes('pstatp') || s.includes('snssdk');
-            }).slice(0, 20);
-          });
-          if (domImg.length > 0) {
-            ogData.image = domImg[0];
-            ogData.images = domImg;
-          }
-        }
-        // 不提前返回，继续用 API 数据覆盖（OG 只有封面，API 有完整数据）
-        // 将 OG 数据作为兜底
-        if (ogData && !data) {
-          data = { __ogFallback: true, ...ogData };
-        }
-      }
-
-      // 合并 apiData 到 data（优先使用 slidesinfo API 数据）
-      if (apiData?.aweme_details?.length > 0) {
-        data = apiData; // API 数据最完整，覆盖掉 OG 兜底
-        console.log('[Douyin] 使用 API 数据，图片数:', apiData.aweme_details[0]?.images?.length || 0);
-      }
-
-      // 解析数据
-      if (data) {
-        const result = extractDouyinData(data, page);
+      // 5. 提取数据
+      const apiData = targetApiData || lastApiData;
+      if (apiData?.aweme_detail) {
+        const result = extractDouyinData({ awemeDetail: apiData.aweme_detail }, page);
         if (result && result.media.length > 0) {
           await context.close().catch(() => {});
           return applySharedCaption(result, sharedCaption);
         }
-        // 如果 API 数据解析失败，但 data 有 OG 字段，fallback
-        if (data.__ogFallback) {
+      }
+
+      // 5.5 从 DOM <script> 提取嵌入的 JSON 数据
+      const scriptData = await page.evaluate(() => {
+        try { if (window.__INITIAL_STATE__) return window.__INITIAL_STATE__; } catch {}
+        try { if (window._SSR_DATA) return window._SSR_DATA; } catch {}
+        try {
+          const el = document.getElementById('_RENDER_DATA');
+          if (el) return JSON.parse(decodeURIComponent(el.textContent || ''));
+        } catch {}
+        try {
+          const scripts = document.querySelectorAll('script');
+          for (const s of scripts) {
+            const t = s.textContent || '';
+            if (t.includes('aweme_detail') || t.includes('awemeDetail')) {
+              const m = t.match(/\{[\s\S]*"aweme_detail"[\s\S]*\}/);
+              if (m) {
+                try { return JSON.parse(m[0]); } catch {}
+              }
+            }
+          }
+        } catch {}
+        return null;
+      }).catch(() => null);
+
+      if (scriptData) {
+        console.log('[Douyin] 从 DOM script 提取到数据');
+        const result = extractDouyinData(scriptData, page);
+        if (result && result.media.length > 0) {
           await context.close().catch(() => {});
-          return applySharedCaption(formatResult(data), sharedCaption);
+          return applySharedCaption(result, sharedCaption);
         }
       }
 
-      // 最后尝试从页面截图分析或直接获取页面信息
-      const title = await page.title();
-      const url_ = page.url();
+      // 6. OG/DOM 兜底
+      const ogData = await page.evaluate(() => {
+        const get = (sel) => {
+          const el = document.querySelector(sel);
+          return el ? el.getAttribute('content') || '' : '';
+        };
+        return {
+          title: get('meta[property="og:title"]') || document.title,
+          description: get('meta[property="og:description"]') || get('meta[name="description"]'),
+          image: get('meta[property="og:image"]'),
+          video: get('meta[property="og:video"]') || get('meta[property="og:video:url"]'),
+          url: get('meta[property="og:url"]'),
+        };
+      }).catch(() => ({}));
 
-      await context.close().catch(() => {});
-
-      if (title && title !== '抖音') {
-        return applySharedCaption(formatResult({ title, url: url_ }), sharedCaption);
+      if (ogData && (ogData.video || ogData.image)) {
+        await context.close().catch(() => {});
+        return applySharedCaption(formatResult(ogData), sharedCaption);
       }
 
-      // 如果到达这里，说明解析失败
+      // 7. 页面 title 兜底
+      const title = await page.title().catch(() => '');
+      await context.close().catch(() => {});
+      if (title && title !== '抖音' && !title.includes('记录美好生活')) {
+        return applySharedCaption(formatResult({ title, url: videoPageUrl }), sharedCaption);
+      }
+
       if (attempt < MAX_RETRIES) {
-        console.log(`[Douyin] 第 ${attempt + 1} 次尝试失败，重试...`);
-        // 等待后重试
+        console.log('[Douyin] 重试...');
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
     } catch (e) {
-      console.log(`[Douyin] 错误:`, e.message);
-      if (pageCtx?.context) {
-        await pageCtx.context.close().catch(() => {});
-      }
+      console.log('[Douyin] 错误:', e.message);
+      if (context) await context.close().catch(() => {});
       if (attempt < MAX_RETRIES) {
         await new Promise(r => setTimeout(r, 2000));
         continue;
@@ -250,21 +249,15 @@ async function parseDouyin(url, sharedCaption = '') {
     }
   }
 
-  // 所有尝试失败
   return applySharedCaption({
     title: '抖音',
     description: '抖音解析失败：无法绕过 WAF 风控，请尝试在抖音 APP 中直接保存。',
-    author: '',
-    cover: '',
-    video: '',
-    images: [],
-    type: 'unknown',
-    media: [],
+    author: '', cover: '', video: '', images: [], type: 'unknown', media: [], noWatermark: false,
   }, sharedCaption);
 }
 
 /**
- * 从 __INITIAL_STATE__ 或其他数据中提取视频/图文信息
+ * 从 __INITIAL_STATE__ 或 API 数据中提取视频/图文信息
  */
 function extractDouyinData(data, page) {
   try {
@@ -275,23 +268,46 @@ function extractDouyinData(data, page) {
       const images = [];
       const imgList = d?.images || [];
       for (const img of imgList) {
-        const urlList = img?.url_list || img?.urlList || [];
-        // 优先取无水印版本（不包含 water-v2）
-        const noWatermark = urlList.find(u => !u.includes('water-v2') && !u.includes('watermark'));
-        const best = noWatermark || urlList[0] || '';
+        const urlList = [
+          ...(img?.url_list || []),
+          ...(img?.urlList || []),
+          img?.download_url_list?.[0],
+          img?.noWatermarkUrl,
+          img?.url,
+          img?.display_url,
+        ].flat(2).filter(Boolean);
+        const best = pickNoWatermark(urlList, 'image');
         if (best) images.push(best);
       }
 
       let videoUrl = '';
       const video = d?.video;
       if (video) {
-        videoUrl = video?.play_addr?.url_list?.[0]
-          || video?.playAddr?.[0]
-          || video?.play_api?.url_list?.[0]
-          || video?.download_addr?.url_list?.[0]
-          || '';
-        // 背景音乐（.mp3）不算视频
-        if (videoUrl && /\.mp3(\?|$)/i.test(videoUrl)) videoUrl = '';
+        const bitRateList = [].concat(
+          video?.bit_rate || [],
+          video?.bitRate || [],
+          video?.video?.bit_rate || [],
+          video?.bitRateList || [],
+        ).filter(Boolean);
+
+        const bitRatePlayUrls = bitRateList.flatMap((b) => [
+          ...(b?.play_addr?.url_list || []),
+          ...(b?.playAddr || []),
+          ...(b?.url_list || []),
+          b?.url,
+        ]).filter(Boolean);
+
+        const videoCandidates = [
+          ...bitRatePlayUrls,
+          ...(video?.play_addr?.url_list || []),
+          ...(video?.playAddr?.[0]?.url_list || []),
+          video?.play_api?.url_list?.[0],
+          ...(video?.download_addr?.url_list || []),
+          video?.download_suffix_logo_addr?.url_list?.[0],
+        ].filter(Boolean).map((u) => (typeof u === 'string' ? u : u?.url || ''));
+
+        const bestVideo = pickNoWatermark(videoCandidates, 'video');
+        if (bestVideo && !/\.mp3(\?|$)/i.test(bestVideo)) videoUrl = bestVideo;
       }
 
       const title = d?.desc || '';
@@ -304,6 +320,8 @@ function extractDouyinData(data, page) {
       }
 
       const type = images.length > 0 ? 'image' : (videoUrl ? 'video' : 'text');
+      const noWatermark = (images.length > 0 ? allNoWatermark(images, 'image') : true)
+        && (videoUrl ? !isWatermarkedVideoUrl(videoUrl) : true);
 
       return {
         title: title || '抖音视频',
@@ -314,12 +332,14 @@ function extractDouyinData(data, page) {
         images,
         type,
         media,
+        noWatermark,
       };
     }
 
-    // 桌面端 douyin.com 数据结构（兜底）
+    // 桌面端 douyin.com / aweme_detail 数据结构
     const awemeDetail = data?.awemeDetail
       || data?.aweme?.detail
+      || data?.aweme_detail
       || data?.videoData
       || data?.mediaData
       || data?.noteData
@@ -332,12 +352,42 @@ function extractDouyinData(data, page) {
 
     const imageList = awemeDetail?.images || awemeDetail?.imageList || awemeDetail?.image_list || [];
     for (const img of imageList) {
-      const url = img?.urlList?.[0] || img?.url_list?.[0] || img?.url || img?.display_url || '';
-      if (url) images.push(url);
+      const candidates = [
+        ...(img?.urlList || []),
+        ...(img?.url_list || []),
+        ...(img?.download_url_list || []),
+        img?.noWatermarkUrl,
+        img?.url,
+        img?.display_url,
+      ].filter(Boolean);
+      const best = pickNoWatermark(candidates, 'image');
+      if (best) images.push(best);
     }
 
     if (video) {
-      videoUrl = video?.playAddr?.[0] || video?.play_addr?.[0]?.url_list?.[0] || video?.playAddr || video?.play_url?.url_list?.[0] || video?.playApi || video?.downloadAddr || video?.download_addr?.[0]?.url_list?.[0] || '';
+      const bitRateList = [].concat(
+        video?.bit_rate || [],
+        video?.bitRate || [],
+        video?.bitRateList || [],
+      ).filter(Boolean);
+      const bitRatePlayUrls = bitRateList.flatMap((b) => [
+        ...(b?.play_addr?.url_list || []),
+        ...(b?.playAddr || []),
+        ...(b?.url_list || []),
+        b?.url,
+      ]).filter(Boolean);
+      const videoCandidates = [
+        ...bitRatePlayUrls,
+        ...(Array.isArray(video?.playAddr) ? video.playAddr : []),
+        video?.play_addr?.[0]?.url_list?.[0],
+        video?.play_url?.url_list?.[0],
+        video?.playApi,
+        ...(Array.isArray(video?.downloadAddr) ? video.downloadAddr : []),
+        video?.download_addr?.[0]?.url_list?.[0],
+        video?.download_suffix_logo_addr?.url_list?.[0],
+      ].filter(Boolean).map((u) => (typeof u === 'string' ? u : u?.url || ''));
+      const bestVideo = pickNoWatermark(videoCandidates, 'video');
+      if (bestVideo && !/\.mp3(\?|$)/i.test(bestVideo)) videoUrl = bestVideo;
       cover = video?.cover?.urlList?.[0] || video?.cover?.url_list?.[0] || video?.originCover?.urlList?.[0] || video?.origin_cover?.url_list?.[0] || video?.dynamicCover || video?.dynamic_cover || '';
     }
 
@@ -346,6 +396,9 @@ function extractDouyinData(data, page) {
 
     const media = images.map(u => ({ type: 'image', url: u, thumb: u }));
     if (videoUrl) media.push({ type: 'video', url: videoUrl, thumb: cover });
+
+    const noWatermark = (images.length > 0 ? allNoWatermark(images, 'image') : true)
+      && (videoUrl ? !isWatermarkedVideoUrl(videoUrl) : true);
 
     return {
       title: title || '抖音视频',
@@ -356,6 +409,7 @@ function extractDouyinData(data, page) {
       images,
       type: videoUrl ? 'video' : (images.length > 0 ? 'image' : 'text'),
       media,
+      noWatermark,
     };
   } catch (e) {
     console.log('[Douyin/Extract] 错误:', e.message);
@@ -368,18 +422,30 @@ function extractDouyinData(data, page) {
  */
 function formatResult(og) {
   const media = [];
-  if (og.image) media.push({ type: 'image', url: og.image, thumb: og.image });
-  if (og.video) media.push({ type: 'video', url: og.video, thumb: og.image || '' });
-  const images = og.image ? [og.image] : [];
+  const images = [];
+  let videoUrl = '';
+  const ogImage = og.image && !isWatermarkedImageUrl(og.image) ? og.image : '';
+  const ogVideo = og.video && !isWatermarkedVideoUrl(og.video) ? og.video : '';
+  if (ogImage) {
+    media.push({ type: 'image', url: ogImage, thumb: ogImage });
+    images.push(ogImage);
+  }
+  if (ogVideo) {
+    media.push({ type: 'video', url: ogVideo, thumb: ogImage || '' });
+    videoUrl = ogVideo;
+  }
+  const noWatermark = (images.length > 0 ? allNoWatermark(images, 'image') : true)
+    && (videoUrl ? !isWatermarkedVideoUrl(videoUrl) : true);
   return {
     title: og.title || '抖音',
     description: og.description || og.title || '',
     author: og.author || '',
-    cover: og.image || '',
-    video: og.video || '',
+    cover: ogImage || '',
+    video: videoUrl,
     images,
-    type: og.video ? 'video' : (images.length > 0 ? 'image' : 'text'),
+    type: videoUrl ? 'video' : (images.length > 0 ? 'image' : 'text'),
     media,
+    noWatermark,
   };
 }
 

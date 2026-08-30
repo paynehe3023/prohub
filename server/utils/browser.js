@@ -1,10 +1,43 @@
 /**
  * Playwright 浏览器管理器
  * 管理浏览器实例的生命周期，提供页面创建/关闭功能
+ *
+ * 使用 playwright-extra + puppeteer-extra-plugin-stealth 绕过抖音等平台的自动化检测。
+ * 浏览器优先级：CHROME_PATH 环境变量 > Playwright 自带 chromium > 系统 chromium。
  */
-const { chromium } = require('playwright');
+let chromium;
+let stealthPlugin;
+try {
+  // playwright-extra 在 stealth 应用后能绕过 WAF（抖音 a_bogus 签名校验）
+  chromium = require('playwright-extra').chromium;
+  stealthPlugin = require('puppeteer-extra-plugin-stealth');
+  chromium.use(stealthPlugin());
+} catch (e) {
+  // 退回到原生 playwright（stealth 未安装时）
+  chromium = require('playwright').chromium;
+  console.warn('[Browser] playwright-extra/stealth 未安装，退回原生 playwright:', e.message);
+}
 
-const CHROME_PATH = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const fs = require('fs');
+
+// 解析可执行文件路径：优先 CHROME_PATH，其次常见系统 chromium 路径
+function resolveExecutablePath() {
+  if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
+  if (process.platform === 'win32') {
+    const winPath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    return fs.existsSync(winPath) ? winPath : '';
+  }
+  // Linux/Mac：检查系统 chromium（Docker apk 安装的位置）
+  const sysCandidates = ['/usr/bin/chromium-browser', '/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable'];
+  for (const p of sysCandidates) {
+    try { if (fs.existsSync(p)) return p; } catch {}
+  }
+  // Playwright 自带 chromium（由 npx playwright install 下载）
+  return '';
+}
+
+const CHROME_PATH = resolveExecutablePath();
+const HEADLESS = process.env.HEADLESS !== 'false'; // 默认 true，HEADLESS=false 时用非 headless
 
 let browser = null;
 let browserLock = false;
@@ -28,19 +61,26 @@ async function getBrowser() {
     lastUsed = Date.now();
     return browser;
   }
-  console.log('[Browser] 启动 Chromium...');
-  browser = await chromium.launch({
-    executablePath: CHROME_PATH,
-    headless: true,
+  const stealthOn = !!stealthPlugin;
+  console.log(`[Browser] 启动 Chromium (headless=${HEADLESS}, stealth=${stealthOn}, exe=${CHROME_PATH || 'bundled'})...`);
+  const launchOptions = {
+    headless: HEADLESS,
     args: [
       '--no-sandbox',
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--disable-infobars',
       ...(process.platform === 'win32' ? ['--single-process'] : ['--disable-setuid-sandbox']),
       '--no-zygote',
     ],
-  });
+  };
+  // 如果解析到可执行路径则用指定的，否则用 Playwright 自带的 chromium
+  if (CHROME_PATH) {
+    launchOptions.executablePath = CHROME_PATH;
+  }
+  browser = await chromium.launch(launchOptions);
   lastUsed = Date.now();
   console.log('[Browser] Chromium 已启动');
   return browser;
@@ -62,12 +102,6 @@ async function createPage(url, opts = {}) {
     timezoneId: 'Asia/Shanghai',
   });
   const page = await context.newPage();
-
-  // 覆盖自动化检测
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-  });
 
   try {
     const response = await page.goto(url, {

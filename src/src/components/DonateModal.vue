@@ -7,7 +7,7 @@
         @click.self="close"
       >
         <section
-          class="w-full max-w-sm overflow-hidden rounded-3xl border border-slate-200 bg-white/95 text-slate-900 shadow-2xl shadow-slate-900/20 dark:border-slate-700 dark:bg-slate-950/95 dark:text-white"
+          class="w-full max-w-md min-h-[420px] max-h-[85vh] sm:max-h-[80vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/95 text-slate-900 shadow-2xl shadow-slate-900/20 dark:border-slate-700 dark:bg-slate-950/95 dark:text-white"
           role="dialog"
           aria-modal="true"
           aria-labelledby="donate-title"
@@ -22,7 +22,7 @@
             </button>
           </div>
 
-          <div class="space-y-4 p-5">
+          <div class="flex-1 overflow-y-auto space-y-4 p-6">
             <p class="text-sm leading-6 text-slate-600 dark:text-slate-300">如果这个工作台帮你节省了时间，可以请作者喝杯咖啡。</p>
             <div class="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-900">
               <button

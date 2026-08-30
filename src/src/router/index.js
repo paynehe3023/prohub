@@ -72,6 +72,16 @@ const routes = [
       keywords: '自媒体,小红书,抖音,公众号,AI润色,DeepSeek,违禁词,全网发布',
     },
   },
+  {
+    path: '/pay-merge',
+    name: 'PayMerge',
+    component: () => import('../views/PayMerge.vue'),
+    meta: {
+      title: '聚合收款码 - proHub',
+      description: '微信支付宝二合一聚合收款码，扫码自动识别付款环境',
+      keywords: '聚合收款码,二维码合并,微信,支付宝',
+    },
+  },
   // 预留路由
   {
     path: '/tools/coming-soon',
@@ -88,10 +98,35 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior() {
+  // 返回上一页时恢复离开时的滚动位置（如从二级页返回主页时回到功能入口位置），
+  // 进入新页面时回到顶部
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition;
     return { top: 0 };
   },
 });
+
+// 空闲时预加载所有懒加载路由组件：
+// 消除首次点击功能卡片进入二级页面时的 chunk 网络加载卡顿
+function preloadLazyRoutes() {
+  for (const record of router.getRoutes()) {
+    const comp = record.components && record.components.default;
+    if (typeof comp === 'function') {
+      Promise.resolve(comp()).catch(() => {});
+    }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  const scheduleIdle = window.requestIdleCallback
+    ? (cb) => window.requestIdleCallback(cb, { timeout: 5000 })
+    : (cb) => window.setTimeout(cb, 2000);
+  if (document.readyState === 'complete') {
+    scheduleIdle(preloadLazyRoutes);
+  } else {
+    window.addEventListener('load', () => scheduleIdle(preloadLazyRoutes), { once: true });
+  }
+}
 
 // 全局路由守卫：自动更新 Head meta
 router.afterEach((to) => {

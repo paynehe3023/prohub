@@ -12,7 +12,23 @@ const upload = multer({
 
 // rembg server URL (host.docker.internal for Docker → host Python process)
 const REMBG_URL = process.env.REMBG_URL || 'http://rembg:8080';
-const REMBG_MODEL = process.env.REMBG_MODEL || 'u2netp';
+// isnet-general-use：实测人像边缘精度最佳（发丝自然、头顶完整、无黑边晕圈），热推理约 2s
+const REMBG_MODEL = process.env.REMBG_MODEL || 'isnet-general-use';
+// rembg 冷启动加载模型 + 移动端弱网重传，需要更长的上游超时
+const UPSTREAM_TIMEOUT = 120000;
+
+/**
+ * 归一化输入：HEIC/WebP/AVIF 等统一转为 PNG 再转发 rembg（其内部 PIL 不支持 HEIC）
+ * 同时限制最长边 2048px，避免手机原片（12MP+）导致上游推理与响应体过大
+ */
+async function normalizeToPng(inputBuffer) {
+  const pipeline = sharp(inputBuffer, { failOn: 'none' }).rotate();
+  const meta = await pipeline.metadata();
+  if (meta.width && meta.height && Math.max(meta.width, meta.height) > 2048) {
+    pipeline.resize(2048, 2048, { fit: 'inside', withoutEnlargement: true });
+  }
+  return pipeline.png({ compressionLevel: 6 }).toBuffer();
+}
 
 /**
  * POST /api/remove
@@ -24,26 +40,45 @@ router.post('/remove-bg', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: '请上传图片文件', code: 400 });
     }
 
+    let inputBuffer;
+    try {
+      inputBuffer = await normalizeToPng(req.file.buffer);
+    } catch (e) {
+      return res.status(400).json({ error: '图片解析失败', message: '无法识别该图片格式，请使用 JPG/PNG/HEIC/WebP 常规照片', code: 400 });
+    }
+
     const form = new FormData();
-    form.append('file', req.file.buffer, {
-      filename: req.file.originalname || 'image.png',
-      contentType: req.file.mimetype || 'image/png',
+    form.append('file', inputBuffer, {
+      filename: 'input.png',
+      contentType: 'image/png',
     });
     form.append('model', REMBG_MODEL);
     // 人像分割模型 + 后处理遮罩，改善头发边缘
 
-    console.log('[remove-bg] Processing image:', req.file.originalname, `(${req.file.size} bytes)`);
+    console.log('[remove-bg] Processing image:', req.file.originalname, `(${req.file.size} bytes → normalized ${inputBuffer.length} bytes)`);
 
     const response = await axios.post(`${REMBG_URL}/api/remove`, form, {
       headers: { ...form.getHeaders() },
       responseType: 'arraybuffer',
-      timeout: 60000,
+      timeout: UPSTREAM_TIMEOUT,
+      maxContentLength: 64 * 1024 * 1024,
     });
 
-    console.log('[remove-bg] Success:', response.data.length, 'bytes');
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Content-Disposition', 'attachment; filename="no-bg.png"');
-    res.send(Buffer.from(response.data));
+    // 输出压缩：PNG → WebP（保留 alpha，体积降约 60-70%，iOS 14+/全部现代浏览器支持）
+    let outputBuffer = Buffer.from(response.data);
+    let contentType = 'image/png';
+    try {
+      outputBuffer = await sharp(outputBuffer)
+        .webp({ quality: 90, alphaQuality: 90 })
+        .toBuffer();
+      contentType = 'image/webp';
+    } catch (e) {
+      console.error('[remove-bg] WebP compress failed, fallback to PNG:', e.message);
+    }
+
+    console.log('[remove-bg] Success:', outputBuffer.length, 'bytes,', contentType);
+    res.setHeader('Content-Type', contentType);
+    res.send(outputBuffer);
   } catch (err) {
     console.error('[remove-bg] Error:', err.message);
     const msg = err.response?.status === 500

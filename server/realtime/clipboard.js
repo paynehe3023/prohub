@@ -34,12 +34,22 @@ function createHostToken() {
 function hasValidHostToken(room, candidate) {
   const expected = String(room?.hostToken || '');
   const received = String(candidate || '');
-  if (!expected || !received) return false;
+  if (!expected || !received || expected.length !== received.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
+}
 
-  const expectedBuffer = Buffer.from(expected);
-  const receivedBuffer = Buffer.from(received);
-  if (expectedBuffer.length !== receivedBuffer.length) return false;
-  return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+function hasRoomMember(room, clientId) {
+  const normalizedClientId = normalizeClientId(clientId);
+  if (!normalizedClientId) return false;
+  return Array.from(room?.devices.values() || []).some((device) => device.clientId === normalizedClientId);
+}
+
+function requireRoomMember(room, req) {
+  const hostToken = req.header('x-host-token') || req.body?.hostToken || req.query?.hostToken;
+  const clientId = req.header('x-client-id') || req.body?.clientId || req.query?.clientId;
+  if (!hasValidHostToken(room, hostToken) && !hasRoomMember(room, clientId)) {
+    throw new Error('ROOM_AUTH_REQUIRED');
+  }
 }
 
 function normalizeRoomId(value) {
@@ -246,6 +256,7 @@ function createRoom(roomId, ttlMinutes = DEFAULT_TTL_MINUTES) {
     socketClients: new Set(),
     devices: new Map(),
     hostConnectionId: null,
+    hostDisconnectTimer: null,
     destroying: false,
     ttlMs,
     lastActivityAt: Date.now(),
@@ -307,7 +318,15 @@ function removeClient(room, clientId, expectedRes = null) {
   const device = room.devices.get(clientId);
   room.devices.delete(clientId);
   if (device?.isHost && room.hostConnectionId === clientId) {
-    destroyRoom(room.roomId, 'Host 已退出，房间已被销毁');
+    room.hostConnectionId = null;
+    room.hostDisconnectTimer = setTimeout(() => {
+      room.hostDisconnectTimer = null;
+      if (rooms.get(room.roomId) === room && !room.hostConnectionId) {
+        destroyRoom(room.roomId, 'Host 已退出，房间已被销毁');
+      }
+    }, 15000);
+    room.hostDisconnectTimer.unref?.();
+    broadcastOnlineDevices(room);
     return;
   }
   broadcastOnlineDevices(room);
@@ -363,6 +382,10 @@ function expireRoom(roomId, reason = 'expired') {
 function destroyRoom(roomId, reason = 'Host 已退出，房间已被销毁') {
   const room = rooms.get(normalizeRoomId(roomId));
   if (!room || room.destroying) return false;
+  if (room.hostDisconnectTimer) {
+    clearTimeout(room.hostDisconnectTimer);
+    room.hostDisconnectTimer = null;
+  }
   room.destroying = true;
   if (room.timer) clearTimeout(room.timer);
   const payload = { roomId: room.roomId, reason, destroyedAt: Date.now() };
@@ -492,6 +515,10 @@ function resolveClip(room, payload, msgId, clientId) {
 }
 
 function handleJoin(room, payload, connectionId = null, metadata = {}) {
+  if (room.hostDisconnectTimer) {
+    clearTimeout(room.hostDisconnectTimer);
+    room.hostDisconnectTimer = null;
+  }
   touchRoom(room);
   const isHost = hasValidHostToken(room, payload?.hostToken);
   if (connectionId) {
@@ -757,7 +784,16 @@ function registerClipboardRealtime(app, httpServer) {
         room.socketClients.delete(socket.id);
         room.devices.delete(socket.id);
         if (device?.isHost && room.hostConnectionId === socket.id) {
-          destroyRoom(room.roomId, 'Host 已退出，房间已被销毁');
+          room.hostConnectionId = null;
+          room.hostDisconnectTimer = setTimeout(() => {
+            room.hostDisconnectTimer = null;
+            const currentRoom = rooms.get(room.roomId);
+            if (currentRoom === room && !room.hostConnectionId && room.devices.size === 0) {
+              destroyRoom(room.roomId, 'Host 已退出，房间已被销毁');
+            }
+          }, 15000);
+          room.hostDisconnectTimer.unref?.();
+          broadcastOnlineDevices(room);
           return;
         }
         broadcastOnlineDevices(room);
@@ -948,6 +984,7 @@ function registerClipboardRealtime(app, httpServer) {
       if (!room) {
         return res.status(404).json({ error: '房间不存在或已销毁' });
       }
+      requireRoomMember(room, req);
       touchRoom(room);
       const asset = storeAsset(room, file);
 
@@ -978,6 +1015,11 @@ function registerClipboardRealtime(app, httpServer) {
     if (!room || !asset) {
       return res.status(404).json({ error: '文件已过期或不存在' });
     }
+    try {
+      requireRoomMember(room, req);
+    } catch (error) {
+      return res.status(403).json({ error: error.message });
+    }
 
     const download = req.query.download === '1' || req.query.download === 'true';
     const disposition = download || !asset.isImage ? 'attachment' : 'inline';
@@ -997,6 +1039,11 @@ function registerClipboardRealtime(app, httpServer) {
 
     if (!room) {
       return res.status(404).json({ error: '房间不存在' });
+    }
+    try {
+      requireRoomMember(room, req);
+    } catch (error) {
+      return res.status(403).json({ error: error.message });
     }
 
     const assetId = String(req.params.assetId);

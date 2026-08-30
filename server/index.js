@@ -8,6 +8,7 @@ const parseRoute = require('./routes/parse');
 const removeBgRoute = require('./routes/remove-bg');
 const wallpapersRoute = require('./routes/wallpapers');
 const forbiddenWordsRoute = require('./routes/forbidden-words');
+const qrShortenRoute = require('./routes/qr-shorten');
 const feedbackRoute = require('./routes/feedback');
 const { registerClipboardRealtime } = require('./realtime/clipboard');
 
@@ -38,6 +39,7 @@ app.use('/api', parseRoute);
 app.use('/api', removeBgRoute);
 app.use('/api', wallpapersRoute);
 app.use('/api', forbiddenWordsRoute);
+app.use('/api', qrShortenRoute);
 app.use('/api', feedbackRoute);
 registerClipboardRealtime(app, server);
 

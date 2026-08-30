@@ -1,6 +1,6 @@
 <template>
   <router-link :to="tool.route"
-    class="group relative block p-5 rounded-[28px] motion-interactive liquid-glass hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(15,23,42,0.16)] dark:hover:shadow-[0_16px_36px_rgba(0,0,0,0.42)]"
+    class="tool-card-link group relative block p-5 rounded-[28px] motion-interactive liquid-glass hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(15,23,42,0.16)] dark:hover:shadow-[0_16px_36px_rgba(0,0,0,0.42)]"
     :class="{ 'opacity-50 hover:opacity-65 border-dashed': tool.status === 'coming_soon' }">
     <span v-if="tool.isNew"
       class="absolute top-3 right-3 px-2.5 py-0.5 text-[0.625rem] font-semibold tracking-wider rounded-full bg-ios-blue/20 text-ios-blue border border-ios-blue/30">

@@ -14,18 +14,25 @@
       </p>
 
       <div class="mt-6 flex items-center justify-center gap-3">
-        <a href="#tools" class="btn-ios btn-ios-primary">开始使用</a>
-        <a href="https://github.com/paynehe3023/prohub" target="_blank" rel="noopener" class="btn-ios btn-ios-glass">
-          <IconBrandGithub class="w-4.5 h-4.5" /> GitHub
+        <button
+          type="button"
+          @click="scrollToTools"
+          class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition-all hover:bg-blue-500 active:scale-95"
+        >
+          开始使用
+          <IconArrowDown class="w-4 h-4" />
+        </button>
+        <a href="https://github.com/paynehe3023/prohub" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-zinc-200 dark:hover:bg-slate-700">
+          <IconBrandGithub class="w-4 h-4" /> GitHub
         </a>
       </div>
     </div>
   </section>
 
-  <section id="tools" class="home-tools max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 relative z-[1]">
-    <div class="flex flex-wrap items-center gap-2 mb-8">
+  <section id="tools" class="home-tools max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 relative z-[1] scroll-mt-16 sm:scroll-mt-20">
+    <div class="flex flex-nowrap items-center gap-2 mb-8 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
       <button v-for="cat in categories" :key="cat.id" @click="activeCategory = cat.id"
-        class="px-4 py-2 rounded-full text-[0.8125rem] font-medium tracking-[-0.01em] motion-interactive active:scale-[0.97] text-glass-sm"
+        class="shrink-0 whitespace-nowrap min-h-[44px] px-5 py-2 rounded-full text-[0.875rem] font-semibold tracking-[-0.01em] motion-interactive active:scale-[0.96] text-glass-sm"
         :class="activeCategory === cat.id
           ? 'bg-ios-blue text-white shadow-md shadow-ios-blue/20'
           : 'liquid-glass-inset text-slate-600 dark:text-zinc-300'">
@@ -79,12 +86,16 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { useHead } from '@vueuse/head';import { IconSparkles, IconBrandGithub, IconMoodEmpty, IconShieldCheck, IconBolt, IconDeviceMobile } from '@tabler/icons-vue';
+import { useHead } from '@vueuse/head';
+import { IconSparkles, IconArrowDown, IconBrandGithub, IconMoodEmpty, IconShieldCheck, IconBolt, IconDeviceMobile } from '@tabler/icons-vue';
 import { tools, categories, getToolsByCategory } from '../config/tools';
 import ToolCard from '../components/ToolCard.vue';
 useHead({ title: 'proHub - 全能在线工具箱' });
 const activeCategory = ref('all');
 const filteredTools = computed(() => getToolsByCategory(activeCategory.value));
+function scrollToTools() {
+  document.getElementById('tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 </script>
 
 <style scoped>

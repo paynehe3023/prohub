@@ -7,7 +7,7 @@
         @click.self="close"
       >
         <section
-          class="flex max-h-[min(92vh,760px)] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white/95 text-slate-900 shadow-2xl shadow-slate-900/20 dark:border-slate-700 dark:bg-slate-950/95 dark:text-white dark:shadow-black/40"
+          class="w-full max-w-md min-h-[420px] max-h-[85vh] sm:max-h-[80vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/95 text-slate-900 shadow-2xl shadow-slate-900/20 dark:border-slate-700 dark:bg-slate-950/95 dark:text-white dark:shadow-black/40"
           role="dialog"
           aria-modal="true"
           aria-labelledby="feedback-title"
@@ -292,6 +292,25 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 自定义滚动条样式 */
+.overflow-y-auto {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5);
+  border-radius: 3px;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(107, 114, 128, 0.7);
+}
+
 .feedback-modal-enter-active,
 .feedback-modal-leave-active {
   transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1);

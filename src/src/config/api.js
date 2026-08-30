@@ -7,10 +7,7 @@
  */
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 const CURRENT_ORIGIN = typeof window !== 'undefined' ? window.location.origin : '';
-const CURRENT_PROTOCOL = typeof window !== 'undefined' ? window.location.protocol : 'http:';
-const CURRENT_HOSTNAME = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-const SOCKET_PORT = import.meta.env.VITE_SOCKET_PORT || '3001';
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (import.meta.env.DEV ? CURRENT_PROTOCOL + '//' + CURRENT_HOSTNAME + ':' + SOCKET_PORT : CURRENT_ORIGIN);
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || CURRENT_ORIGIN;
 const PUBLIC_APP_ORIGIN = import.meta.env.VITE_PUBLIC_APP_ORIGIN || CURRENT_ORIGIN;
 
 export const apiConfig = {

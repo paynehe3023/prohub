@@ -285,7 +285,7 @@
 
                 <div v-else-if="clip.kind === 'image'" class="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)] items-start">
                    <div class="mobile-glass-inset rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900">
-                    <img :src="clip.localPreviewUrl || clip.previewUrl || clip.dataUrl" alt="图片预览" class="w-full h-auto object-contain" />
+                    <img :src="clip.localPreviewUrl || clip.dataUrl || getAbsoluteUrl(clip.previewUrl) || ''" alt="图片预览" class="w-full h-auto object-contain" @error="loadProtectedImagePreview(clip)" />
                   </div>
                   <div class="space-y-3 text-sm text-slate-600 dark:text-slate-400">
                     <p class="break-all">文件名：{{ displayFileName(clip.fileName, 'image.png') }}</p>
@@ -425,6 +425,7 @@ import { useRoute, useRouter } from 'vue-router';
 import QRCode from 'qrcode';
 import { io } from 'socket.io-client';
 import { apiConfig } from '../../config/api';
+import { saveBlob } from '../../lib/download';
 import BackButton from '../../components/BackButton.vue';
 import {
   IconAlertTriangle,
@@ -479,8 +480,10 @@ const imageCompressionThreshold = 1 * 1024 * 1024;
 const imageCompressionMaxEdge = 2048;
 const imageCompressionQuality = 0.85;
 const uploadTimeoutMs = 120000;
+const sessionRequestTimeoutMs = 10000;
 const maxUploadRetries = 2;
 const maxFileBytes = 50 * 1024 * 1024;
+const maxTextPreviewBytes = 5 * 1024 * 1024;
 
 const roomId = ref('');
 const isHost = ref(false);
@@ -524,11 +527,15 @@ let visibilityHandler = null;
 let beforeUnloadHandler = null;
 let roomResetTimer = null;
 let roomRetryTimer = null;
+let roomSessionRetryAttempts = 0;
+let reconnectAttempts = 0;
 let pendingRoomNavigation = null;
 const uploadRequests = new Map();
 const uploadReaders = new Map();
 const uploadRetryTimers = new Map();
 const preparingUploads = new Set();
+const imagePreviewRequests = new Set();
+const failedImagePreviews = new Set();
 const cancelledUploads = new Set();
 const seenMsgIds = new Set();
 const pendingTextMessages = new Map();
@@ -696,27 +703,47 @@ function persistRoomState(nextRoomId, nextRole) {
   }
 }
 
-function clearRoomSessionRetry() {
+function clearRoomSessionRetry({ resetAttempts = true } = {}) {
   if (roomRetryTimer) {
     window.clearTimeout(roomRetryTimer);
     roomRetryTimer = null;
   }
+  if (resetAttempts) roomSessionRetryAttempts = 0;
 }
 
 async function requestRoomSession(nextRoomId, intent = 'join', { forceGuest = false } = {}) {
   const normalizedRoomId = normalizeRoomId(nextRoomId);
   if (!normalizedRoomId) throw new Error('房间号无效');
+  const shouldCreate = intent === 'create' && !forceGuest;
+  if (shouldCreate) {
+    role.value = 'host';
+    isHost.value = true;
+    persistRoomState(normalizedRoomId, 'host');
+  }
 
-  const response = await fetch(apiConfig.baseURL + apiConfig.endpoints.clipboardRoomSession, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      roomId: normalizedRoomId,
-      intent,
-      hostToken: forceGuest ? '' : readHostToken(normalizedRoomId),
-      ttlMinutes: roomTtlMinutes.value,
-    }),
-  });
+  const sessionAbortController = new AbortController();
+  const sessionTimeoutId = window.setTimeout(() => sessionAbortController.abort(), sessionRequestTimeoutMs);
+  let response;
+  try {
+    response = await fetch(apiConfig.baseURL + apiConfig.endpoints.clipboardRoomSession, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: sessionAbortController.signal,
+      body: JSON.stringify({
+        roomId: normalizedRoomId,
+        intent,
+        hostToken: forceGuest ? '' : readHostToken(normalizedRoomId),
+        ttlMinutes: roomTtlMinutes.value,
+      }),
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('房间服务响应超时');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(sessionTimeoutId);
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data?.ok) {
     throw new Error(data?.error || `房间身份确认失败（HTTP ${response.status}）`);
@@ -875,6 +902,38 @@ function updateUploadCard(msgId, patch) {
   }
 }
 
+function updateClipByKey(clip, patch) {
+  const key = clipMessageKey(clip);
+  const index = clips.value.findIndex((item) => clipMessageKey(item) === key || item.id === clip.id);
+  if (index >= 0) {
+    clips.value = clips.value.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, ...patch } : item
+    ));
+  }
+}
+
+async function loadProtectedImagePreview(clip) {
+  if (!clip || clip.kind !== 'image' || clip.localPreviewUrl || clip.dataUrl || !clip.previewUrl) return;
+  const key = clipMessageKey(clip);
+  if (!key || imagePreviewRequests.has(key) || failedImagePreviews.has(key)) return;
+  imagePreviewRequests.add(key);
+  try {
+    const blob = await getClipBlob(clip);
+    const localPreviewUrl = URL.createObjectURL(blob);
+    const current = clips.value.find((item) => clipMessageKey(item) === key);
+    if (current?.localPreviewUrl) {
+      URL.revokeObjectURL(localPreviewUrl);
+      return;
+    }
+    if (current) updateClipByKey(current, { localPreviewUrl });
+    else URL.revokeObjectURL(localPreviewUrl);
+  } catch {
+    failedImagePreviews.add(key);
+  } finally {
+    imagePreviewRequests.delete(key);
+  }
+}
+
 function scheduleIncomingClip(clip) {
   const key = clipMessageKey(clip);
   if (!key || seenMsgIds.has(key)) return;
@@ -982,10 +1041,23 @@ function joinSocketRoom() {
   });
 }
 
+function isTransientRoomError(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return message.includes('failed to fetch')
+    || message.includes('networkerror')
+    || message.includes('load failed')
+    || message.includes('timeout')
+    || message.includes('响应超时')
+    || message.includes('房间不存在')
+    || message.includes('room_not_found')
+    || message.includes('信令服务');
+}
+
 function handleRoomJoinFailure(message) {
   const errorMessage = String(message || '无法加入当前房间');
   if (errorMessage === 'ROOM_NOT_FOUND' || errorMessage.includes('房间不存在')) {
-    const requestedSession = isHost.value || role.value === 'host'
+    const wasHost = isHost.value || role.value === 'host' || Boolean(hostToken.value) || Boolean(readHostToken(roomId.value));
+    const requestedSession = wasHost
       ? { roomId: roomId.value, intent: 'create', forceGuest: false }
       : { roomId: roomId.value, intent: 'join', forceGuest: true };
     disconnectSocket();
@@ -1024,7 +1096,7 @@ function connectSocket() {
     path: '/socket.io',
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionAttempts: Infinity,
+    reconnectionAttempts: 5,
     reconnectionDelayMax: 4000,
     timeout: 15000,
   });
@@ -1088,6 +1160,8 @@ function connectSocket() {
   });
 
   socketInstance.on('clip:delete', (payload) => {
+    const removedClip = clips.value.find((item) => item.id === payload?.clipId);
+    if (removedClip?.localPreviewUrl) URL.revokeObjectURL(removedClip.localPreviewUrl);
     clips.value = clips.value.filter((item) => item.id !== payload?.clipId);
     syncRoomMeta(payload?.room);
   });
@@ -1157,6 +1231,8 @@ function cleanupCurrentRoomConnections({ clearRoomData = true, clearResetTimer =
   uploadReaders.clear();
   uploadRequests.clear();
   uploadRetryTimers.clear();
+  imagePreviewRequests.clear();
+  failedImagePreviews.clear();
   preparingUploads.clear();
   cancelledUploads.clear();
   disconnectSocket();
@@ -1213,10 +1289,13 @@ async function startIndependentHostRoom() {
   isRoomDestroyed.value = false;
   isInputDisabled.value = false;
   roomResetCountdown.value = 5;
-  isHost.value = false;
-  role.value = 'guest';
-  hostToken.value = '';
   const nextRoomId = generateRoomId();
+  role.value = 'host';
+  isHost.value = true;
+  hostToken.value = '';
+  reconnectAttempts = 0;
+  roomSessionRetryAttempts = 0;
+  persistRoomState(nextRoomId, 'host');
   pendingRoomNavigation = { roomId: nextRoomId, intent: 'create', forceGuest: false };
   try {
     await router.replace({ name: 'RealtimeClipboard', params: { roomId: nextRoomId } });
@@ -1474,6 +1553,9 @@ function uploadFileWithProgress(file, msgId, attempt = 0, progressStart = 0) {
     const request = new XMLHttpRequest();
     uploadRequests.set(msgId, request);
     request.open('POST', apiConfig.baseURL + apiConfig.endpoints.clipboardUpload);
+    request.setRequestHeader('x-room-id', roomId.value);
+    request.setRequestHeader('x-client-id', selfClientId);
+    request.setRequestHeader('x-host-token', hostToken.value || '');
     request.timeout = uploadTimeoutMs;
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -1532,6 +1614,22 @@ function uploadFileWithProgress(file, msgId, attempt = 0, progressStart = 0) {
   });
 }
 
+async function deleteUploadedAsset(assetId) {
+  if (!assetId || !roomId.value) return;
+  try {
+    await fetch(`${apiConfig.baseURL}${apiConfig.endpoints.clipboardUpload}/${encodeURIComponent(roomId.value)}/${encodeURIComponent(assetId)}`, {
+      method: 'DELETE',
+      headers: {
+        'x-room-id': roomId.value,
+        'x-client-id': selfClientId,
+        'x-host-token': hostToken.value || '',
+      },
+    });
+  } catch {
+    // Cleanup is best effort; the room TTL still bounds retained assets.
+  }
+}
+
 function cancelUpload(msgId) {
   cancelledUploads.add(msgId);
   const retryTimer = uploadRetryTimers.get(msgId);
@@ -1552,6 +1650,7 @@ async function uploadAndSendFile(file) {
     throw new Error(`${file.name} 超过 50MB 单文件限制`);
   }
   const msgId = createUploadCard(file);
+  let uploadedAssetId = '';
   preparingUploads.add(msgId);
 
   try {
@@ -1591,7 +1690,11 @@ async function uploadAndSendFile(file) {
       });
     } else {
       const uploadData = await uploadFileWithProgress(preparedFile, msgId, 0, wasCompressed ? 45 : 0);
-      if (cancelledUploads.has(msgId)) throw new Error('已取消传输');
+      uploadedAssetId = uploadData?.asset?.assetId || '';
+      if (cancelledUploads.has(msgId)) {
+        await deleteUploadedAsset(uploadedAssetId);
+        throw new Error('已取消传输');
+      }
       updateUploadCard(msgId, { transferProgress: 97 });
       response = await new Promise((resolve, reject) => {
         socketInstance?.emit('clip:send', {
@@ -1617,6 +1720,7 @@ async function uploadAndSendFile(file) {
     }
   } catch (error) {
     preparingUploads.delete(msgId);
+    if (uploadedAssetId) await deleteUploadedAsset(uploadedAssetId);
     markUploadFailed(msgId, error);
     throw error;
   }
@@ -1723,8 +1827,7 @@ async function copyClip(clip) {
     }
 
     if (clip.kind === 'image' && (clip.dataUrl || clip.previewUrl)) {
-      const url = clip.dataUrl || getAbsoluteUrl(clip.previewUrl);
-      const blob = await fetch(url).then((response) => response.blob());
+      const blob = await getClipBlob(clip);
       if (navigator.clipboard?.write && window.ClipboardItem) {
         await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })]);
         showToast('success', '已复制', '图片已复制到剪贴板。');
@@ -1743,7 +1846,13 @@ async function getClipBlob(clip) {
   const source = clip.dataUrl || clip.downloadUrl || clip.previewUrl;
   const url = getAbsoluteUrl(source);
   if (!url) throw new Error('文件地址不存在');
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: {
+      'x-room-id': roomId.value,
+      'x-client-id': selfClientId,
+      'x-host-token': hostToken.value || '',
+    },
+  });
   if (!response.ok) throw new Error(`读取文件失败（HTTP ${response.status}）`);
   return response.blob();
 }
@@ -1758,6 +1867,9 @@ async function previewTextFile(clip) {
   };
   try {
     const blob = await getClipBlob(clip);
+    if (blob.size > maxTextPreviewBytes) {
+      throw new Error('文本文件超过 5MB，暂不支持在线预览');
+    }
     const content = await blob.text();
     textPreview.value = {
       open: true,
@@ -1788,16 +1900,12 @@ function closeTextPreview() {
 async function downloadClip(clip) {
   try {
     const blob = await getClipBlob(clip);
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = objectUrl;
-    anchor.download = displayFileName(clip.fileName, clip.kind === 'image' ? 'clipboard-image' : 'clipboard-file');
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
-    showToast('success', '下载已开始', `${anchor.download} 正在保存。`);
+    const fileName = displayFileName(clip.fileName, clip.kind === 'image' ? 'clipboard-image' : 'clipboard-file');
+    // 统一保存逻辑：移动端优先系统分享面板（图片可"存储到相册"），桌面直接下载
+    await saveBlob(blob, fileName);
+    showToast('success', '保存完成', `${fileName} 已保存或已唤起保存面板。`);
   } catch (error) {
+    if (error?.name === 'AbortError') return; // 用户取消分享面板
     showToast('error', '下载失败', error?.message || '无法下载原始文件');
   }
 }
@@ -1808,6 +1916,9 @@ function deleteClip(clip) {
       showToast('error', '删除失败', response?.error || '删除失败');
       return;
     }
+    if (clip.localPreviewUrl) URL.revokeObjectURL(clip.localPreviewUrl);
+    imagePreviewRequests.delete(clipMessageKey(clip));
+    failedImagePreviews.delete(clipMessageKey(clip));
     clips.value = clips.value.filter((item) => item.id !== clip.id);
     roomExpiresAt.value = response.room?.expiresAt || roomExpiresAt.value;
     showToast('success', '已删除', '条目已从房间中移除。');
@@ -1824,6 +1935,7 @@ function clearRoom() {
       showToast('error', '清空失败', response?.error || '无法清空房间');
       return;
     }
+    releaseLocalPreviewUrls(clips.value);
     clips.value = [];
     textDraft.value = '';
     syncRoomMeta(response.room);
@@ -1912,7 +2024,13 @@ function resetShareOrigin() {
 }
 
 function scheduleRoomSessionRetry(nextRoomId, requestedSession, requestId) {
-  clearRoomSessionRetry();
+  clearRoomSessionRetry({ resetAttempts: false });
+  if (roomSessionRetryAttempts >= 5) {
+    socketState.value = 'offline';
+    showToast('error', '连接失败', '房间服务暂时不可用，请稍后手动重试。');
+    return;
+  }
+  roomSessionRetryAttempts += 1;
   roomRetryTimer = window.setTimeout(async () => {
     roomRetryTimer = null;
     if (requestId !== roomSessionRequestId || roomId.value !== nextRoomId) return;
@@ -1920,13 +2038,14 @@ function scheduleRoomSessionRetry(nextRoomId, requestedSession, requestId) {
       await requestRoomSession(nextRoomId, requestedSession.intent, {
         forceGuest: requestedSession.forceGuest,
       });
+      roomSessionRetryAttempts = 0;
       connectSocket();
       await refreshQr();
     } catch (error) {
       socketState.value = 'reconnecting';
       scheduleRoomSessionRetry(nextRoomId, requestedSession, requestId);
     }
-  }, 3000);
+  }, Math.min(3000 * roomSessionRetryAttempts, 12000));
 }
 
 let roomSessionRequestId = 0;
@@ -1938,11 +2057,13 @@ watch(() => route.params.roomId, async (value) => {
     const persisted = readPersistedRoomState();
     const restoredRoomId = normalizeRoomId(persisted?.roomId);
     const restoredHost = persisted?.role === 'host' && Boolean(readHostToken(restoredRoomId));
-    const nextRoomId = restoredRoomId || generateRoomId();
+    // 只有能恢复 Host 身份的旧房间才复用；Host Token 已丢失（如关闭标签页后重开）时
+    // 一律创建新房间，避免以 Guest 意图加入早已过期的旧房间导致反复重试和 toast。
+    const nextRoomId = restoredHost ? restoredRoomId : generateRoomId();
     pendingRoomNavigation = {
       roomId: nextRoomId,
-      intent: restoredHost ? 'create' : restoredRoomId ? 'join' : 'create',
-      forceGuest: restoredHost ? false : Boolean(restoredRoomId),
+      intent: 'create',
+      forceGuest: false,
     };
     await router.replace({ name: 'RealtimeClipboard', params: { roomId: nextRoomId } });
     return;
@@ -1950,28 +2071,42 @@ watch(() => route.params.roomId, async (value) => {
 
   const persisted = readPersistedRoomState();
   const hasSavedHostToken = Boolean(readHostToken(normalized));
+
+  // 强制校验：如果 URL 中指定了房间且有存储的 Host token，强制走 create
   const requestedSession = pendingRoomNavigation?.roomId === normalized
     ? pendingRoomNavigation
     : {
       roomId: normalized,
       intent: hasSavedHostToken ? 'create' : 'join',
-      forceGuest: false,
+      forceGuest: !hasSavedHostToken,
     };
+
   pendingRoomNavigation = null;
   clearRoomSessionRetry();
   try {
     await requestRoomSession(normalized, requestedSession.intent, { forceGuest: requestedSession.forceGuest });
+    // 成功后，如果设备类型为移动端，再次确保本地状态持久化
+    if (getDeviceType() === 'Mobile') persistRoomState(normalized, role.value);
   } catch (error) {
     roomId.value = normalized;
-    isHost.value = false;
-    role.value = 'guest';
-    hostToken.value = '';
+    const preserveHostIntent = requestedSession.intent === 'create' && !requestedSession.forceGuest;
+    if (preserveHostIntent) {
+      isHost.value = true;
+      role.value = 'host';
+      persistRoomState(normalized, 'host');
+    } else {
+      isHost.value = false;
+      role.value = 'guest';
+      hostToken.value = '';
+    }
     if (requestId === roomSessionRequestId) {
       cleanupCurrentRoomConnections();
       socketState.value = 'offline';
-      if (requestedSession.intent === 'join' || error?.message === 'Failed to fetch') {
+      if (isTransientRoomError(error) || requestedSession.intent === 'join') {
         socketState.value = 'reconnecting';
-        showToast('info', '正在恢复房间', '信令服务暂时没有房间数据，系统会自动重试连接。');
+        showToast('info', '正在连接房间', requestedSession.intent === 'create'
+          ? '正在连接信令服务并创建房间，请稍候。'
+          : '正在等待房间服务响应，请稍候。');
         scheduleRoomSessionRetry(normalized, requestedSession, requestId);
       } else {
         showToast('error', '房间身份确认失败', error?.message || '请检查后端服务是否正常。');
@@ -2002,28 +2137,7 @@ onMounted(() => {
     showToast('success', document.visibilityState === 'visible' ? '页面已回到前台' : '页面已转入后台', document.visibilityState === 'visible' ? '连接状态会自动重连保持。' : '继续后台运行，回到页面即可恢复可见状态。');
   };
   beforeUnloadHandler = () => {
-    if (isHost.value && socketInstance && !isRoomDestroyed.value) {
-      const payload = {
-        roomId: roomId.value,
-        clientId: selfClientId,
-        event: 'room:destroy',
-        payload: {
-          roomId: roomId.value,
-          hostToken: hostToken.value,
-        },
-      };
-      try {
-        navigator.sendBeacon?.(
-          apiConfig.baseURL + '/clipboard/event',
-          new Blob([JSON.stringify(payload)], { type: 'application/json' }),
-        );
-      } catch {
-        socketInstance.emit('room:destroy', {
-          roomId: roomId.value,
-          hostToken: hostToken.value,
-        });
-      }
-    }
+    // 页面刷新或进入后台不代表用户主动退出，交给 Socket 断线恢复机制处理。
   };
   window.addEventListener('paste', handleGlobalPaste);
   window.addEventListener('beforeunload', beforeUnloadHandler);
