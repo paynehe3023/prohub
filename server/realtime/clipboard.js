@@ -7,6 +7,7 @@ const DEFAULT_TTL_MS = DEFAULT_TTL_MINUTES * 60 * 1000;
 const MAX_CLIPS = Number(process.env.CLIPBOARD_MAX_ITEMS || 20);
 const MAX_TEXT_LENGTH = Number(process.env.CLIPBOARD_MAX_TEXT_LENGTH || 20000);
 const MAX_UPLOAD_BYTES = Number(process.env.CLIPBOARD_UPLOAD_MAX_BYTES || 50 * 1024 * 1024);
+const TRUST_PROXY = /^(1|true|yes)$/i.test(String(process.env.TRUST_PROXY || ''));
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -91,14 +92,19 @@ function extractIpv4(value) {
   return match[1];
 }
 
+function getForwardedIpv4(headers = {}) {
+  if (!TRUST_PROXY) return '';
+  return extractIpv4(headers['x-forwarded-for']) || extractIpv4(headers['x-real-ip']);
+}
+
 function getRequestIpv4(req) {
-  return extractIpv4(req.headers['x-forwarded-for'])
+  return getForwardedIpv4(req.headers)
     || extractIpv4(req.socket?.remoteAddress)
     || '未知 IPv4';
 }
 
 function getSocketIpv4(socket) {
-  return extractIpv4(socket.handshake.headers['x-forwarded-for'])
+  return getForwardedIpv4(socket.handshake.headers)
     || extractIpv4(socket.handshake.address)
     || '未知 IPv4';
 }
@@ -338,8 +344,8 @@ function registerRoomDevice(room, connectionId, payload = {}, metadata = {}, isH
   const device = {
     connectionId: normalizedConnectionId,
     clientId: normalizeClientId(payload.clientId) || normalizedConnectionId,
-    ip: String(metadata.ip || payload.ip || '未知 IP'),
-    location: String(payload.deviceLocation || metadata.location || '未知地区'),
+    ip: String(metadata.ip || '未知 IP'),
+    location: String(metadata.location || '未知地区'),
     deviceType: payload.deviceType === 'Mobile' || metadata.deviceType === 'Mobile' ? 'Mobile' : 'PC',
     isHost: Boolean(isHost),
   };
@@ -663,7 +669,7 @@ function registerClipboardRealtime(app, httpServer) {
           socket.emit('ROOM_CONFIG_SYNC', result.config);
           socket.emit('ONLINE_DEVICES_CHANGE', { devices: result.devices });
           broadcastOnlineDevices(room);
-          void enrichDeviceLocation(room, socket.id, socketIp, payload.deviceLocation);
+          void enrichDeviceLocation(room, socket.id, socketIp, '未知地区');
           if (typeof acknowledge === 'function') acknowledge(result);
         } catch (error) {
           if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
@@ -857,10 +863,9 @@ function registerClipboardRealtime(app, httpServer) {
         deviceLocation: req.query.deviceLocation,
       }, {
         ip: requestIp,
-        location: req.query.deviceLocation,
         deviceType: req.query.deviceType,
       }, hasValidHostToken(room, hostToken));
-      void enrichDeviceLocation(room, clientId, requestIp, req.query.deviceLocation);
+      void enrichDeviceLocation(room, clientId, requestIp, '未知地区');
       writeSse(res, 'connected', { room: clipSummary(room), clientId });
       broadcastOnlineDevices(room);
     } catch (error) {
@@ -890,10 +895,9 @@ function registerClipboardRealtime(app, httpServer) {
           const eventIp = getRequestIpv4(req);
           result = handleJoin(room, payload, clientId, {
             ip: eventIp,
-            location: payload.deviceLocation,
             deviceType: payload.deviceType,
           });
-          void enrichDeviceLocation(room, clientId, eventIp, payload.deviceLocation);
+          void enrichDeviceLocation(room, clientId, eventIp, '未知地区');
           broadcastOnlineDevices(room);
           if (room.clients.has(clientId)) {
             writeSse(room.clients.get(clientId).res, 'SYNC_HISTORY_STATE', {

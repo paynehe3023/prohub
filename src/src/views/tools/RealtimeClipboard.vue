@@ -343,6 +343,7 @@
               <p class="truncate text-xs font-medium text-slate-700 dark:text-slate-200">
                 {{ device.ip }} · {{ device.location }}
               </p>
+              <p class="mt-0.5 truncate text-[0.625rem] text-slate-500 dark:text-slate-400">服务器观测公网出口 IP · 归属地为近似 GeoIP</p>
               <p v-if="device.isSelf" class="mt-0.5 text-[0.6875rem] text-emerald-700 dark:text-emerald-300">当前设备（本机）</p>
             </div>
             <button v-if="isHost && !device.isSelf" type="button" @click="kickDevice(device)" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-rose-300 hover:bg-rose-950/60 hover:text-rose-200" aria-label="踢出设备" title="踢出设备">
@@ -639,7 +640,7 @@ function getDeviceType() {
 }
 
 function getDeviceLocation() {
-  return '未知地区';
+  return '';
 }
 
 function createMessageId() {

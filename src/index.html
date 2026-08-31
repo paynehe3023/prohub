@@ -28,6 +28,24 @@
         document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
       } catch {}
     })();
+    // 同步恢复壁纸：在首屏渲染前设好 CSS 变量，避免"先闪太空壁纸再变用户壁纸"
+    (() => {
+      try {
+        const raw = localStorage.getItem('prohub-background');
+        if (!raw) return;
+        let bg;
+        try { bg = JSON.parse(raw); } catch { return; }
+        if (!bg || typeof bg !== 'object') return;
+        const root = document.documentElement.style;
+        if (bg.imageUrl) {
+          root.setProperty('--prohub-background-image', 'url("' + bg.imageUrl + '")');
+          root.setProperty('--prohub-background-color', bg.color || '#111827');
+        } else if (bg.color) {
+          root.setProperty('--prohub-background-image', 'none');
+          root.setProperty('--prohub-background-color', bg.color);
+        }
+      } catch {}
+    })();
   </script>
 </head>
 <body>

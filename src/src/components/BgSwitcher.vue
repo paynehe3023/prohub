@@ -110,7 +110,6 @@ const activeBackgroundId = ref('');
 const bingWallpapers = ref([]);
 const bingLoading = ref(false);
 const bingError = ref('');
-const restoredBackgroundId = ref('');
 
 const solidPresets = [
   { id: 'solid-white', label: '纯白', color: '#FFFFFF', textColor: '#252525' },
@@ -161,7 +160,15 @@ function applyBackground(background, options = {}) {
   applyBodyBackground(background);
   activeBackgroundId.value = background.id;
   if (options.persist !== false) {
-    window.localStorage.setItem(BACKGROUND_STORAGE_KEY, background.id);
+    // 存完整 JSON（imageUrl + color + textColor），刷新时 index.html 内联 JS 和
+    // onMounted 均可直接恢复，无需等 Bing 数据异步加载，消除"先闪太空壁纸再变用户壁纸"
+    window.localStorage.setItem(BACKGROUND_STORAGE_KEY, JSON.stringify({
+      id: background.id,
+      imageUrl: background.imageUrl || '',
+      color: background.color || '',
+      textColor: background.textColor || '#FFFFFF',
+      label: background.label || '',
+    }));
   }
   emit('change', background);
   try {
@@ -171,6 +178,19 @@ function applyBackground(background, options = {}) {
 
 function findBackground(id) {
   return allKnownBackgrounds.value.find((background) => background.id === id);
+}
+
+// 解析 localStorage 中的壁纸 JSON（兼容旧格式：纯 id 字符串自动忽略）
+function parseStoredBackground() {
+  try {
+    const raw = window.localStorage.getItem(BACKGROUND_STORAGE_KEY);
+    if (!raw) return null;
+    const bg = JSON.parse(raw);
+    if (!bg || typeof bg !== 'object') return null;
+    return bg;
+  } catch {
+    return null;
+  }
 }
 
 function onCustom(event) {
@@ -199,8 +219,10 @@ async function loadBingWallpapers() {
       label: item.title || item.startDate,
       textColor: '#FFFFFF',
     }));
-    const restored = findBackground(restoredBackgroundId.value);
-    if (restored) applyBackground(restored, { persist: false });
+    // 壁纸已在 onMounted 从 localStorage JSON 直接恢复，Bing 数据加载后
+    // 只需同步高亮选中项，不再重新 applyBackground（避免二次闪烁）
+    const stored = parseStoredBackground();
+    if (stored) activeBackgroundId.value = stored.id;
   } catch (error) {
     bingError.value = error.message || '壁纸加载失败';
   } finally {
@@ -215,8 +237,14 @@ function onClickOutside(event) {
 }
 
 onMounted(() => {
-  restoredBackgroundId.value = window.localStorage.getItem(BACKGROUND_STORAGE_KEY) || defaultWallpaper.id;
-  applyBackground(findBackground(restoredBackgroundId.value) || defaultWallpaper, { persist: false });
+  // 直接从 localStorage JSON 恢复壁纸（index.html 内联 JS 已先行设好 CSS 变量，
+  // 此处同步应用状态 + 高亮，无需等 Bing 数据加载，消除闪烁）
+  const stored = parseStoredBackground();
+  if (stored && (stored.imageUrl || stored.color)) {
+    applyBackground(stored, { persist: false });
+  } else {
+    applyBackground(defaultWallpaper, { persist: false });
+  }
   loadBingWallpapers();
   document.addEventListener('click', onClickOutside);
 });

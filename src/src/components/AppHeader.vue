@@ -164,13 +164,16 @@ onBeforeUnmount(() => {
 
 <style scoped>
 header {
-  transition: transform 340ms cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: transform;
+  transition: transform 340ms cubic-bezier(0.16, 1, 0.3, 1), opacity 260ms ease;
+  will-change: transform, opacity;
 }
 
 .app-header-hidden {
-  /* 补偿 sticky 的 top-3 偏移与移动端安全区，确保完全滑出视口。 */
+  /* 位移 + 渐隐双过渡：仅靠 translateY 会被藏到移动端浏览器地址栏后面，
+     视觉上像"没消失"；叠加 opacity 渐隐才是真正的消失动画。 */
   transform: translateY(calc(-100% - 0.75rem - env(safe-area-inset-top)));
+  opacity: 0;
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

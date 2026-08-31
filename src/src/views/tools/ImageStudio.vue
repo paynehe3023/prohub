@@ -51,11 +51,14 @@
           </div>
 
           <div class="grid grid-cols-2 gap-2">
-            <button
-              type="button"
+            <div
+              role="button"
+              tabindex="0"
               class="relative rounded-[14px] border border-dashed p-3 text-center transition-colors min-h-[132px] flex flex-col items-center justify-center gap-2"
               :class="qrAlipayImg ? 'border-solid border-ios-blue/50 bg-ios-blue/10' : 'border-white/20 bg-black/10 hover:border-white/40'"
               @click="triggerQrPick('alipay')"
+              @keydown.enter.prevent="triggerQrPick('alipay')"
+              @keydown.space.prevent="triggerQrPick('alipay')"
             >
               <img v-if="qrAlipayImg" :src="qrAlipayImg.url" alt="支付宝二维码" class="w-20 h-20 rounded-lg object-contain bg-white" />
               <IconQrcode v-else class="w-7 h-7 text-zinc-400" />
@@ -71,12 +74,15 @@
                 @click.stop.prevent="clearQrImage('alipay')"
               >×</button>
               <input ref="qrAlipayInput" type="file" accept="image/*" class="hidden" @change="onQrFileChange($event, 'alipay')" />
-            </button>
-            <button
-              type="button"
+            </div>
+            <div
+              role="button"
+              tabindex="0"
               class="relative rounded-[14px] border border-dashed p-3 text-center transition-colors min-h-[132px] flex flex-col items-center justify-center gap-2"
               :class="qrWechatImg ? 'border-solid border-ios-green/50 bg-ios-green/10' : 'border-white/20 bg-black/10 hover:border-white/40'"
               @click="triggerQrPick('wechat')"
+              @keydown.enter.prevent="triggerQrPick('wechat')"
+              @keydown.space.prevent="triggerQrPick('wechat')"
             >
               <img v-if="qrWechatImg" :src="qrWechatImg.url" alt="微信二维码" class="w-20 h-20 rounded-lg object-contain bg-white" />
               <IconBrandWechat v-else class="w-7 h-7 text-zinc-400" />
@@ -92,9 +98,10 @@
                 @click.stop.prevent="clearQrImage('wechat')"
               >×</button>
               <input ref="qrWechatInput" type="file" accept="image/*" class="hidden" @change="onQrFileChange($event, 'wechat')" />
-            </button>
+            </div>
           </div>
           <p v-if="qrError" class="mt-2 rounded-xl border border-ios-red/40 bg-ios-red/10 px-3 py-2 text-[0.6875rem] text-ios-red">{{ qrError }}</p>
+          <p v-if="qrOriginHint" class="mt-2 rounded-xl border border-ios-orange/40 bg-ios-orange/10 px-3 py-2 text-[0.6875rem] text-ios-orange">{{ qrOriginHint }}</p>
         </section>
 
         <section v-else class="liquid-glass p-4">
@@ -518,6 +525,7 @@ import QRCode from 'qrcode';
 import { IconClockHour4, IconDownload, IconPhoto, IconQrcode, IconBrandWechat } from '@tabler/icons-vue';
 import BreadcrumbNav from '../../components/BreadcrumbNav.vue';
 import { saveBlob } from '../../lib/download';
+import { apiConfig } from '../../config/api';
 
 type StudioTab = 'compress' | 'resize' | 'privacy' | 'convert' | 'compose' | 'qrcode';
 type MaskStyle = 'mosaic' | 'black' | 'white' | 'blur';
@@ -1065,6 +1073,16 @@ const qrMergedUrl = ref(''); // 最终合成图（二维码 + 文字）
 const qrResultSection = ref<HTMLElement | null>(null);
 const qrCaption = ref('请扫码付款 · 谢谢');
 const qrError = ref('');
+let qrMergeGeneration = 0;
+
+// 二维码跳转域名：优先取部署域名（VITE_PUBLIC_APP_ORIGIN），否则退回当前访问 origin。
+// 关键：手机扫码后访问的是编码进二维码的这个地址 —— 若是 localhost，
+// 手机根本无法访问（Safari/微信提示"网址无效"或打不开）。
+const qrJumpOrigin = apiConfig.publicOrigin.replace(/\/+$/, '');
+const qrOriginHint =
+  /localhost|127\.0\.0\.1/.test(qrJumpOrigin)
+    ? '当前通过 localhost 访问，生成的二维码在手机上无法打开。请改用局域网 IP（如 http://192.168.x.x:5173）或公网域名访问本页后重新生成。'
+    : '';
 
 // 宽松识别"像收款码 / 合法跳转链接"的内容 —— 兼容微信、支付宝、QQ、银联、云闪付、
 // 各类聚合支付码、以及直接 HTTPS 转链页等来源。
@@ -1088,6 +1106,7 @@ function triggerQrPick(which: 'alipay' | 'wechat'): void {
 }
 
 function clearQrImage(which: 'alipay' | 'wechat'): void {
+  qrMergeGeneration += 1;
   if (which === 'alipay' && qrAlipayImg.value) {
     URL.revokeObjectURL(qrAlipayImg.value.url);
     qrAlipayImg.value = null;
@@ -1095,8 +1114,11 @@ function clearQrImage(which: 'alipay' | 'wechat'): void {
     URL.revokeObjectURL(qrWechatImg.value.url);
     qrWechatImg.value = null;
   }
-  qrError.value = '';
+  qrBaseDataUrl.value = '';
   qrMergedUrl.value = '';
+  qrProgress.value = 0;
+  qrStage.value = '';
+  qrError.value = '';
 }
 
 function onQrFileChange(event: Event, which: 'alipay' | 'wechat'): void {
@@ -1117,7 +1139,11 @@ function onQrFileChange(event: Event, which: 'alipay' | 'wechat'): void {
     qrWechatImg.value = { url, name: file.name };
   }
   qrError.value = '';
+  qrMergeGeneration += 1;
+  qrBaseDataUrl.value = '';
   qrMergedUrl.value = '';
+  qrProgress.value = 0;
+  qrStage.value = '';
   input.value = '';
 }
 
@@ -1204,6 +1230,9 @@ function composeQrImage(qrDataUrl: string, caption: string): Promise<string> {
 
 async function mergeQRCodes(): Promise<void> {
   if (!qrAlipayImg.value || !qrWechatImg.value || qrMerging.value) return;
+  const generation = ++qrMergeGeneration;
+  const alipayUrl = qrAlipayImg.value.url;
+  const wechatUrl = qrWechatImg.value.url;
   qrMerging.value = true;
   qrError.value = '';
   qrMergedUrl.value = '';
@@ -1211,12 +1240,14 @@ async function mergeQRCodes(): Promise<void> {
   try {
     qrStage.value = '识别支付宝二维码';
     await nextFrame();
-    const alipayText = await decodeQrImage(qrAlipayImg.value.url);
+    const alipayText = await decodeQrImage(alipayUrl);
+    if (generation !== qrMergeGeneration) return;
     qrProgress.value = 22;
 
     qrStage.value = '识别微信二维码';
     await nextFrame();
-    const wechatText = await decodeQrImage(qrWechatImg.value.url);
+    const wechatText = await decodeQrImage(wechatUrl);
+    if (generation !== qrMergeGeneration) return;
     qrProgress.value = 42;
 
     if (!looksLikeValidQrPayload(alipayText) || !looksLikeValidQrPayload(wechatText)) {
@@ -1229,7 +1260,7 @@ async function mergeQRCodes(): Promise<void> {
     qrStage.value = '生成合并链接';
     await nextFrame();
     let jump =
-      `${window.location.origin}/pay-merge?` +
+      `${qrJumpOrigin}/pay-merge?` +
       `w=${encodeURIComponent(wechatText)}&a=${encodeURIComponent(alipayText)}`;
 
     const useShortLinkFirst = jump.length > 600;
@@ -1243,7 +1274,7 @@ async function mergeQRCodes(): Promise<void> {
         });
         if (resp.ok) {
           const data = await resp.json();
-          if (data?.id) jump = `${window.location.origin}/pay-merge?s=${encodeURIComponent(data.id)}`;
+          if (data?.id) jump = `${qrJumpOrigin}/pay-merge?s=${encodeURIComponent(data.id)}`;
         }
       } catch {
         /* 网络异常：继续尝试原始长链接；若仍失败会在 QRCode.toDataURL 抛出 */
@@ -1272,7 +1303,7 @@ async function mergeQRCodes(): Promise<void> {
         if (!resp.ok) throw new Error('二维码内容过长，且短链服务暂不可用，请稍后再试');
         const data = await resp.json();
         if (!data?.id) throw new Error('短链生成失败，请重试');
-        jump = `${window.location.origin}/pay-merge?s=${encodeURIComponent(data.id)}`;
+        jump = `${qrJumpOrigin}/pay-merge?s=${encodeURIComponent(data.id)}`;
         qrDataUrl = await QRCode.toDataURL(jump, { width: 720, margin: 2, errorCorrectionLevel: 'L' });
       } else {
         // 已经用了短链仍失败 → 再尝试放宽参数
@@ -1283,11 +1314,14 @@ async function mergeQRCodes(): Promise<void> {
         });
       }
     }
+    if (generation !== qrMergeGeneration) return;
     qrBaseDataUrl.value = qrDataUrl;
     qrProgress.value = 90;
 
     qrStage.value = '添加文字';
-    qrMergedUrl.value = await composeQrImage(qrDataUrl, qrCaption.value);
+    const mergedUrl = await composeQrImage(qrDataUrl, qrCaption.value);
+    if (generation !== qrMergeGeneration) return;
+    qrMergedUrl.value = mergedUrl;
     qrProgress.value = 100;
     // 合并完成：自动平滑滚动到结果区
     // 兜底：隐藏/遮挡窗口会冻结 smooth 滚动动画（Chromium 特性），

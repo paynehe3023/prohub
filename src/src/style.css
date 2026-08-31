@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 html {
-  min-height: 100%;
+  height: 100%;
   background: var(--prohub-background-color, #f8fafc);
 }
 
@@ -43,52 +43,40 @@ body {
 }
 
 #app {
-  min-height: 100dvh;
+  /* 兜底 100vh：iOS 上 100vh 是常量（等于最大视口高度），不会因地址栏收起而抖动；
+     同时确保内容不足一屏时背景也能铺满视口，避免底部留白。 */
+  min-height: 100vh;
 }
 
 .app-root {
-  /* JS 注入 --app-min-h 做精确覆盖；SSR / JS 尚未运行时 fallback 100dvh */
-  min-height: var(--app-min-h, 100dvh);
+  position: relative;
+  /* 保证页面最小时也能铺满整个屏幕，适配常用手机 16:9 / 20:9 等比例；
+     背景图通过 cover 按容器宽高比裁剪，沉浸式覆盖整屏。 */
+  min-height: 100vh;
 }
 
-.app-fixed-bg {
+/* 壁纸层 = sticky 视口尺寸层：
+   1. 高度锁定 100vh（iOS 上是常量），宽度 100% —— 背景图按"屏幕比例"cover 居中裁剪，
+      彻底消除旧方案"cover 按文档总高度放大"导致的长页面壁纸拉伸/变形；
+   2. sticky top:0 滚动时吸附视口顶部，内容从壁纸上滚过，形成沉浸式手机壁纸效果；
+      吸附由合成器驱动，无 JS、无滚动监听、无 transform；
+   3. margin-bottom: -100vh 抵消文档流占位，内容仍从页面顶部开始；
+   4. 未使用 fixed / 100dvh / 100lvh / visualViewport，符合背景冻结约束。 */
+.app-page-background {
   background-color: var(--prohub-background-color);
   isolation: isolate;
-  contain: layout paint style;
-  /* 合成层预升 */
-  transform: translate3d(0, 0, 0) scale(1);
-  -webkit-transform: translate3d(0, 0, 0) scale(1);
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  -webkit-transform-style: preserve-3d;
-  transform-style: preserve-3d;
-  -webkit-mask-image: -webkit-linear-gradient(#000, #000);
-  mask-image: linear-gradient(#000, #000);
 }
 
-/*
-  壁纸绘制层：由 App.vue 注入固定像素尺寸（初始视口 + EDGE_BUFFER）。
-  - 尺寸恒定 → 地址栏收缩时 cover 比例不会重算（防滚动抽搐）
-  - background-size: cover 保持图片原始宽高比（防拉伸变形）
-  - 外层底色 + 超出裁切共同保证新视口始终被覆盖（无黑边）
-*/
 .app-bg-canvas {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 100%;
-  height: 100%;
-  transform: translate(-50%, -50%);
-  -webkit-transform: translate(-50%, -50%) translate3d(0, 0, 0);
+  inset: 0;
   background-image: var(--prohub-background-image);
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
 }
 
-.app-fixed-bg::after {
+.app-page-background::after {
   position: absolute;
   inset: 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(248, 250, 252, 0.8));
@@ -96,8 +84,8 @@ body {
   pointer-events: none;
 }
 
-.dark .app-fixed-bg::after {
-  background: linear-gradient(180deg, rgba(2, 6, 23, 0.2), rgba(2, 6, 23, 0.62));
+.dark .app-page-background::after {
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.28), rgba(2, 6, 23, 0.72));
 }
 
 .app-ambient-glow {

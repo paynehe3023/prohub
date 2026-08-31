@@ -15,6 +15,8 @@ const { registerClipboardRealtime } = require('./realtime/clipboard');
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
+const trustProxy = /^(1|true|yes)$/i.test(String(process.env.TRUST_PROXY || ''));
+app.set('trust proxy', trustProxy);
 
 // ---- Security & logging middleware ----
 app.use(helmet({
