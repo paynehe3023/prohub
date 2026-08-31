@@ -7,7 +7,10 @@ import { initializeTheme } from './composables/useTheme';
 
 initializeTheme();
 if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
-window.scrollTo(0, 0);
+if (window.performance?.getEntriesByType('navigation')?.[0]?.type === 'reload') {
+  window.addEventListener('load', () => window.scrollTo(0, 0), { once: true });
+  window.setTimeout(() => window.scrollTo(0, 0), 0);
+}
 const app = createApp(App);
 const head = createHead();
 

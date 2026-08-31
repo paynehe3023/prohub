@@ -31,6 +31,8 @@ services:
       - SMTP_PASS=${SMTP_PASS:-}
       - FEEDBACK_FROM=${FEEDBACK_FROM:-}
       - REMBG_MODEL=isnet-general-use
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
     restart: unless-stopped
     depends_on:
       - rembg

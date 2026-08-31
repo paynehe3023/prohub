@@ -3,6 +3,7 @@
     <Transition name="donate-modal">
       <div
         v-if="open"
+        data-modal-overlay
         class="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm dark:bg-slate-950/75"
         @click.self="close"
       >

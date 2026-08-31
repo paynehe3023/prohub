@@ -20,6 +20,8 @@ export const apiConfig = {
     clipboardHealth: '/clipboard/health',
     clipboardRoomSession: '/clipboard/room/session',
     feedback: '/feedback',
+    notifications: '/notifications',
+    adminNotifications: '/admin/notifications',
   },
 };
 
@@ -29,6 +31,7 @@ export const apiConfig = {
 export async function apiFetch(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
   const response = await fetch(url, {
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...options.headers,

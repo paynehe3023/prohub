@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import Home from '../views/Home.vue';
+import Notifications from '../views/Notifications.vue';
+import AdminNotifications from '../views/AdminNotifications.vue';
 
 const routes = [
   {
@@ -10,6 +12,36 @@ const routes = [
       title: 'proHub - 全能在线工具箱',
       description: 'proHub 全能工具箱 - 社交媒体无水印解析下载、文本处理、实用计算等一站式在线工具集合',
       keywords: 'proHub,工具箱,在线工具,无水印下载,小红书解析,微博解析,文本处理,在线计算',
+    },
+  },
+  {
+    path: '/notifications',
+    name: 'Notifications',
+    component: Notifications,
+    meta: {
+      title: '网页通知 - proHub',
+      description: '查看 proHub 项目维护者发布的网页通知。',
+      keywords: '通知,公告,proHub',
+    },
+  },
+  {
+    path: '/notifications/:id',
+    name: 'NotificationDetail',
+    component: Notifications,
+    meta: {
+      title: '通知详情 - proHub',
+      description: 'proHub 通知详情。',
+      keywords: '通知详情,proHub',
+    },
+  },
+  {
+    path: '/admin/notifications',
+    name: 'AdminNotifications',
+    component: AdminNotifications,
+    meta: {
+      title: '通知管理 - proHub',
+      description: 'proHub 通知管理页面。',
+      keywords: '通知管理,proHub',
     },
   },
   {
@@ -50,6 +82,36 @@ const routes = [
       title: 'CIDR 子网划分与重叠校验器 - proHub',
       description: '纯前端 CIDR 子网划分工具，支持多网段输入、重叠检测、可视化区间条和华为/Cisco ACL 导出。',
       keywords: 'CIDR,子网划分,重叠检测,IPv4,ACL,华为,Cisco,网络工具',
+    },
+  },
+  {
+    path: '/tools/color-palette',
+    name: 'ColorPalette',
+    component: () => import('../views/tools/ColorPalette.vue'),
+    meta: {
+      title: '调色板生成器 - proHub',
+      description: '在线调色板生成器，支持多种配色方案、渐变预览和 CSS、JSON、Tailwind 导出。',
+      keywords: '调色板,配色,渐变色,CSS,Tailwind,颜色工具',
+    },
+  },
+  {
+    path: '/tools/unit-converter',
+    name: 'UnitConverter',
+    component: () => import('../views/tools/UnitConverter.vue'),
+    meta: {
+      title: '全能单位换算 - proHub',
+      description: '支持长度、重量、温度、面积、体积、速度、时间、数据存储和实时汇率的在线单位换算工具。',
+      keywords: '单位换算,汇率,长度,重量,温度,面积,体积,速度,时间,数据存储',
+    },
+  },
+  {
+    path: '/tools/text-formatter',
+    name: 'TextFormatter',
+    component: () => import('../views/tools/TextFormatter.vue'),
+    meta: {
+      title: '文本格式化工具 - proHub',
+      description: '支持 JSON 格式化、压缩、校验，Base64 与 URL 编解码，以及大小写和空白处理。',
+      keywords: 'JSON格式化,Base64,URL编解码,大小写,空白处理,文本工具',
     },
   },
   {

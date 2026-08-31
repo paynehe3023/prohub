@@ -8,7 +8,7 @@
         <router-link to="/" class="flex items-center gap-2.5 group shrink-0">
           <div class="w-8 h-8 rounded-[10px] bg-blue-600 flex items-center justify-center shadow-md">
             <svg class="h-6 w-6" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path d="M8.5 6.5h8.3c5.2 0 8.7 3.2 8.7 8.1 0 5-3.6 8.3-8.9 8.3H14v4.6H8.5V6.5Zm5.5 4.7v7.1h2.45c2.3 0 3.65-1.3 3.65-3.65 0-2.25-1.35-3.45-3.65-3.45H14Z" fill="white"/>
+              <path d="M9 4.5h8.1c5.35 0 8.9 3.35 8.9 8.45 0 5.15-3.7 8.55-9.1 8.55H14.5v6H9V4.5Zm5.5 4.8v7.4h2.2c2.45 0 3.8-1.4 3.8-3.75 0-2.3-1.35-3.65-3.8-3.65h-2.2Z" fill="white"/>
             </svg>
           </div>
           <span class="text-[1.0625rem] font-bold tracking-[-0.022em] text-slate-900 dark:text-white whitespace-nowrap">proHub</span>
@@ -16,7 +16,6 @@
 
         <div class="flex items-center gap-6 shrink-0 pl-5 md:pl-0">
           <div class="relative hidden md:block md:ml-6">
-
             <IconSearch class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input v-model="searchQuery" type="search" placeholder="找不到？点击搜一搜" aria-label="搜索功能" class="w-52 rounded-full border border-slate-200 bg-white/70 py-2 pl-10 pr-4 text-sm text-slate-800 outline-none focus:border-ios-blue dark:border-slate-700 dark:bg-slate-800/70 dark:text-white" />
             <div v-if="searchQuery" class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
@@ -28,7 +27,7 @@
             </div>
           </div>
           <Transition name="mobile-search">
-            <div v-if="searchOpen" class="absolute left-5 right-5 top-2 z-50 md:hidden">
+            <div v-if="searchOpen" data-mobile-search class="relative w-[min(58vw,220px)] md:hidden">
               <div class="relative">
                 <IconSearch class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input ref="mobileSearchInput" v-model="searchQuery" type="search" autofocus placeholder="找不到？点击搜一搜" aria-label="搜索功能" class="w-full rounded-full border border-slate-200 bg-white/95 py-2.5 pl-10 pr-4 text-sm text-slate-800 shadow-xl outline-none dark:border-slate-700 dark:bg-slate-900/95 dark:text-white" />
@@ -42,9 +41,13 @@
               </div>
             </div>
           </Transition>
-          <button class="flex h-8 w-8 items-center justify-center rounded-full liquid-glass-inset hover:shadow-md active:scale-[0.95] motion-interactive md:hidden" aria-label="搜索功能" title="搜索功能" @click="toggleMobileSearch">
+          <button v-if="!searchOpen" type="button" data-mobile-search-trigger class="flex h-8 w-8 items-center justify-center rounded-full liquid-glass-inset hover:shadow-md active:scale-[0.95] motion-interactive md:hidden" aria-label="搜索功能" title="搜索功能" @click="toggleMobileSearch">
             <IconSearch class="h-4 w-4 text-slate-500 dark:text-zinc-300" />
           </button>
+          <router-link to="/notifications" class="relative flex h-8 w-8 items-center justify-center rounded-full liquid-glass-inset hover:shadow-md active:scale-[0.95] motion-interactive" aria-label="网页通知" title="网页通知">
+            <IconBell class="h-4 w-4 text-slate-500 dark:text-zinc-300" />
+            <span v-if="hasUnreadNotifications" class="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" aria-label="有新通知"></span>
+          </router-link>
           <button @click="cycleTheme" class="w-8 h-8 rounded-full liquid-glass-inset flex items-center justify-center hover:shadow-md active:scale-[0.95] motion-interactive"
             :title="`当前主题：${themeMode}`">
             <IconSun v-if="isDark" class="w-3.5 h-3.5 text-yellow-500" />
@@ -59,6 +62,7 @@
     <Transition name="about-modal">
       <div
         v-if="aboutOpen"
+        data-modal-overlay
         class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/25 p-4 dark:bg-black/55"
         role="presentation"
         @click.self="aboutOpen = false"
@@ -152,7 +156,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useTheme } from '../composables/useTheme';
 import { useHideOnScroll } from '../composables/useHideOnScroll';
 import { tools } from '../config/tools';
-import { IconSun, IconMoon, IconX, IconShieldCheck, IconBolt, IconMail, IconCopy, IconCheck, IconSearch } from '@tabler/icons-vue';
+import { apiConfig, apiFetch } from '../config/api';
+import { IconSun, IconMoon, IconX, IconShieldCheck, IconBolt, IconMail, IconCopy, IconCheck, IconSearch, IconBell } from '@tabler/icons-vue';
 
 const { isDark, themeMode, cycleTheme } = useTheme();
 const searchQuery = ref('');
@@ -162,6 +167,43 @@ const searchResults = computed(() => {
   if (!query) return [];
   return tools.filter((tool) => [tool.title, tool.desc, tool.category, ...(tool.keywords || [])].join(' ').toLocaleLowerCase().includes(query));
 });
+
+const hasUnreadNotifications = ref(false);
+const notificationItems = ref([]);
+const NOTIFICATIONS_READ_KEY = 'prohub-notifications-read';
+
+function getReadNotificationIds() {
+  try { return new Set(JSON.parse(window.localStorage.getItem(NOTIFICATIONS_READ_KEY) || '[]')); } catch { return new Set(); }
+}
+
+function saveReadNotificationIds(ids) {
+  window.localStorage.setItem(NOTIFICATIONS_READ_KEY, JSON.stringify([...ids]));
+}
+
+async function loadNotificationStatus() {
+  try {
+    notificationItems.value = (await apiFetch(apiConfig.endpoints.notifications)).notifications || [];
+    const ids = new Set(notificationItems.value.map((item) => item.id));
+    const readIds = getReadNotificationIds();
+    const activeReadIds = new Set([...readIds].filter((id) => ids.has(id)));
+    saveReadNotificationIds(activeReadIds);
+    hasUnreadNotifications.value = notificationItems.value.some((item) => !activeReadIds.has(item.id));
+  } catch {
+    hasUnreadNotifications.value = false;
+  }
+}
+
+function markNotificationsRead() {
+  const readIds = getReadNotificationIds();
+  notificationItems.value.forEach((item) => readIds.add(normalizeNotificationId(item.id)));
+  saveReadNotificationIds(readIds);
+  hasUnreadNotifications.value = false;
+}
+
+function refreshNotificationReadState() {
+  const readIds = getReadNotificationIds();
+  hasUnreadNotifications.value = notificationItems.value.some((item) => !readIds.has(normalizeNotificationId(item.id)));
+}
 
 const aboutOpen = ref(false);
 const emailCopied = ref(false);
@@ -203,6 +245,13 @@ async function toggleMobileSearch() {
 function handleKeydown(event) {
   if (event.key !== 'Escape') return;
   aboutOpen.value = false;
+  searchOpen.value = false;
+}
+
+function handleDocumentPointerdown(event) {
+  if (!searchOpen.value || event.target.closest('[data-mobile-search], [data-mobile-search-trigger]')) return;
+  searchOpen.value = false;
+  searchQuery.value = '';
 }
 
 function handleAboutRequest() {
@@ -215,10 +264,15 @@ const { hidden: headerHidden } = useHideOnScroll();
 // Esc 关闭关于弹窗
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown);
+  window.addEventListener('prohub-notifications-updated', refreshNotificationReadState);
+  window.addEventListener('storage', refreshNotificationReadState);
+  document.addEventListener('pointerdown', handleDocumentPointerdown);
   window.addEventListener('prohub:open-about', handleAboutRequest);
+  loadNotificationStatus();
 });
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown);
+  document.removeEventListener('pointerdown', handleDocumentPointerdown);
   window.removeEventListener('prohub:open-about', handleAboutRequest);
   if (emailCopiedTimer) window.clearTimeout(emailCopiedTimer);
   if (qqCopiedTimer) window.clearTimeout(qqCopiedTimer);
@@ -229,6 +283,18 @@ onBeforeUnmount(() => {
 header {
   transition: transform 340ms cubic-bezier(0.16, 1, 0.3, 1), opacity 260ms ease;
   will-change: transform, opacity;
+}
+
+.mobile-search-enter-active,
+.mobile-search-leave-active {
+  overflow: hidden;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.mobile-search-enter-from,
+.mobile-search-leave-to {
+  opacity: 0;
+  transform: translateX(8px);
 }
 
 .app-header-hidden {

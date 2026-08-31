@@ -1,6 +1,6 @@
 <template>
-  <div class="mobile-interface-shell min-h-dvh overflow-x-hidden px-4 py-8 pb-32 text-slate-900 dark:text-slate-100">
-    <div class="max-w-7xl mx-auto space-y-6">
+  <div class="mobile-interface-shell min-h-dvh min-w-0 max-w-full overflow-x-hidden px-4 py-8 pb-32 text-slate-900 dark:text-slate-100">
+    <div class="mx-auto min-w-0 max-w-7xl space-y-6">
       <BackButton />
       <div v-if="isRoomDestroyed && !isHost" class="rounded-3xl border border-amber-300/70 bg-gradient-to-r from-amber-500/20 via-rose-500/20 to-rose-600/20 px-5 py-4 text-amber-900 shadow-xl shadow-rose-950/20 dark:text-amber-100">
         <div class="flex items-start gap-3">
@@ -159,15 +159,15 @@
         </div>
       </section>
 
-      <div class="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
-        <section class="space-y-6">
-          <div class="mobile-glass-card rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
+      <div class="grid min-w-0 max-w-full gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+        <section class="min-w-0 space-y-6">
+          <div class="mobile-glass-card min-w-0 max-w-full rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
             <div class="flex items-center gap-2 mb-4">
               <IconFileText size="18" class="text-sky-600" />
               <h2 class="text-lg font-bold text-slate-900 dark:text-white">文本同步</h2>
             </div>
 
-            <textarea v-model="textDraft" :disabled="isInputDisabled" @paste="handleTextPaste" @keydown.ctrl.enter.prevent="sendTextNow" @keydown.meta.enter.prevent="sendTextNow" rows="8" placeholder="在这里输入内容，点击“立即同步”或按 Ctrl/Cmd + Enter 发送。" class="mobile-glass-inset w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-sky-500 resize-none disabled:cursor-not-allowed disabled:opacity-50" />
+            <textarea v-model="textDraft" :disabled="isInputDisabled" @paste="handleTextPaste" @keydown.ctrl.enter.prevent="sendTextNow" @keydown.meta.enter.prevent="sendTextNow" rows="8" placeholder="在这里输入内容，点击“立即同步”或按 Ctrl/Cmd + Enter 发送。" class="mobile-glass-inset block min-w-0 max-w-full box-border w-full overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-sky-500 resize-none disabled:cursor-not-allowed disabled:opacity-50" />
 
             <div class="mt-3 flex flex-wrap gap-2">
               <button type="button" :disabled="isInputDisabled" @click="sendTextNow" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
@@ -198,8 +198,8 @@
           </div>
         </section>
 
-        <section class="space-y-4">
-          <div class="mobile-glass-card rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <section class="min-w-0 space-y-4">
+          <div class="mobile-glass-card min-w-0 max-w-full rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 class="text-lg font-bold text-slate-900 dark:text-white">同步列表</h2>
               <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">共 {{ clips.length }} 条 · 最多保存 {{ maxClips }} 条 · 失活后自动销毁</p>
@@ -221,7 +221,7 @@
           </div>
 
           <transition-group name="mobile-card" tag="div" class="space-y-4 clipboard-scroll-list">
-            <article v-for="clip in sortedClips" :key="clip.id" class="mobile-glass-card relative overflow-hidden rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
+            <article v-for="clip in sortedClips" :key="clip.id" class="mobile-glass-card relative min-w-0 max-w-full overflow-hidden rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/70 backdrop-blur-xl p-5 shadow-xl">
               <div v-if="clip.transferStatus === 'uploading' || clip.transferStatus === 'failed'" class="absolute inset-x-0 bottom-0 z-10 bg-slate-950/95 px-3 py-2.5 text-white md:inset-0 md:flex md:items-center md:justify-center md:bg-slate-950/55 md:px-6 md:backdrop-blur-sm">
                 <div class="w-full max-w-sm rounded-xl border border-white/15 bg-slate-950/90 p-3 shadow-xl md:rounded-2xl md:p-4">
                   <div class="flex items-center justify-between gap-3">
@@ -244,13 +244,13 @@
                   <p class="mt-2 hidden text-[0.6875rem] text-slate-400 md:block">{{ clip.transferStatus === 'uploading' ? '请保持页面打开，传输完成后即可预览和下载。' : (clip.transferError || '文件传输失败') }}</p>
                 </div>
               </div>
-              <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div class="flex items-center gap-3">
+              <div class="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div class="flex min-w-0 items-center gap-3">
                   <span class="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
                     <component :is="clipIcon(clip)" size="18" />
                   </span>
-                  <div>
-                    <div class="flex flex-wrap items-center gap-2">
+                  <div class="min-w-0">
+                    <div class="flex min-w-0 flex-wrap items-center gap-2">
                       <h3 class="font-semibold text-slate-900 dark:text-white">{{ clipTypeLabel(clip) }}</h3>
                       <span class="px-2.5 py-1 rounded-full text-xs font-medium" :class="clipBadgeClass(clip)">{{ clipSizeLabel(clip) }}</span>
                     </div>
@@ -372,7 +372,7 @@
       </section>
     </div>
 
-    <div v-if="joinRoomOpen" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm dark:bg-slate-950/70" @click.self="closeJoinRoomModal">
+    <div v-if="joinRoomOpen" data-modal-overlay class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm dark:bg-slate-950/70" @click.self="closeJoinRoomModal">
       <section class="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950/95 dark:text-white">
         <div class="flex items-start justify-between gap-4">
           <div>
@@ -398,7 +398,7 @@
       </section>
     </div>
 
-    <div v-if="textPreview.open" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm dark:bg-slate-950/70" @click.self="closeTextPreview">
+    <div v-if="textPreview.open" data-modal-overlay class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm dark:bg-slate-950/70" @click.self="closeTextPreview">
       <section class="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-white">
         <div class="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
           <div class="min-w-0">
@@ -1026,13 +1026,15 @@ function syncOnlineDevices(payload) {
 
 function joinSocketRoom() {
   if (!socketInstance) return;
-  socketInstance.emit('room:join', {
+  const joiningSocket = socketInstance;
+  joiningSocket.emit('room:join', {
     roomId: roomId.value,
     ttlMinutes: roomTtlMinutes.value,
     hostToken: hostToken.value,
     deviceType: getDeviceType(),
     deviceLocation: getDeviceLocation(),
   }, (response) => {
+    if (joiningSocket !== socketInstance) return;
     if (!response?.ok) {
       handleRoomJoinFailure(response?.error || '无法加入当前房间');
       return;
@@ -1289,10 +1291,6 @@ async function submitJoinRoom() {
     showToast('error', '房间码无效', '请输入至少 4 位房间码。');
     return;
   }
-  if (targetRoomId === roomId.value) {
-    closeJoinRoomModal();
-    return;
-  }
   joiningRoom.value = true;
   cleanupCurrentRoomConnections();
   isHost.value = false;
@@ -1380,8 +1378,9 @@ function kickDevice(device) {
 }
 
 function destroyRoomAndExit() {
-  if (!isHost.value || !socketInstance) return;
-  socketInstance.emit('room:destroy', {
+  const activeSocket = socketInstance;
+  if (!isHost.value || !activeSocket || !activeSocket.connected) return;
+  activeSocket.emit('room:destroy', {
     roomId: roomId.value,
     hostToken: hostToken.value,
   }, (response) => {
@@ -1425,15 +1424,16 @@ function sendTextNow() {
     showToast('error', '内容为空', '请输入一点文本再同步。');
     return;
   }
-  if (!socketInstance) {
+  if (!socketInstance || !socketInstance.connected) {
     showToast('error', '尚未连接', '请等待房间连接成功后再同步。');
     return;
   }
   if (Array.from(pendingTextMessages.values()).includes(text)) return;
 
+  const sendingSocket = socketInstance;
   const msgId = createMessageId();
   pendingTextMessages.set(msgId, text);
-  socketInstance.emit('clip:send', {
+  sendingSocket.emit('clip:send', {
     roomId: roomId.value,
     kind: 'text',
     msgId,
@@ -1441,6 +1441,7 @@ function sendTextNow() {
     text,
     ttlMinutes: roomTtlMinutes.value,
   }, (response) => {
+    if (sendingSocket !== socketInstance) return;
     pendingTextMessages.delete(msgId);
     if (!response?.ok) {
       showToast('error', '同步失败', response?.error || '文本发送失败');

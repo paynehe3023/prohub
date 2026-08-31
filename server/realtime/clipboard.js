@@ -520,8 +520,8 @@ function resolveClip(room, payload, msgId, clientId) {
   throw new Error('UNSUPPORTED_CLIP');
 }
 
-function handleJoin(room, payload, connectionId = null, metadata = {}) {
-  const isHost = hasValidHostToken(room, payload?.hostToken);
+function handleJoin(room, payload = {}, connectionId = null, metadata = {}) {
+  const isHost = hasValidHostToken(room, payload.hostToken || metadata.hostToken);
   if (isHost && room.hostDisconnectTimer) {
     clearTimeout(room.hostDisconnectTimer);
     room.hostDisconnectTimer = null;
@@ -567,7 +567,9 @@ function handleClipSend(room, payload, clientId) {
   trimClips(room);
   touchRoom(room);
   const roomState = clipSummary(room);
-  broadcastRoom(room, 'clip:sync', { room: roomState, clip }, clientId);
+  const syncPayload = { room: roomState, clip };
+  broadcastRoom(room, 'clip:sync', syncPayload, clientId);
+  socketServer?.to(room.roomId).emit('clip:sync', syncPayload);
   return { ok: true, room: roomState, clip };
 }
 
@@ -683,9 +685,6 @@ function registerClipboardRealtime(app, httpServer) {
             ...payload,
             clientId: payload.clientId || socket.data.clientId,
           }, socket.data.clientId);
-          if (result.ok && !result.duplicate) {
-            socketServer.to(room.roomId).emit('clip:sync', { room: result.room, clip: result.clip });
-          }
           if (typeof acknowledge === 'function') acknowledge(result);
         } catch (error) {
           if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
@@ -737,8 +736,8 @@ function registerClipboardRealtime(app, httpServer) {
           if (!hasValidHostToken(room, payload.hostToken || socket.data.hostToken)) {
             throw new Error('HOST_AUTH_REQUIRED');
           }
+          if (typeof acknowledge === 'function') acknowledge({ ok: true, destroyed: true });
           destroyRoom(room.roomId, 'Host 已退出，房间已被销毁');
-          if (typeof acknowledge === 'function') acknowledge({ ok: true });
         } catch (error) {
           if (typeof acknowledge === 'function') acknowledge({ ok: false, error: error.message });
         }

@@ -465,7 +465,7 @@ function parseCidr(rawValue, index, id) {
     maskAddress: intToIpv4(mask),
     wildcardAddress: intToIpv4(wildcard),
     usableRangeText: formatRange(usableStart, usableEnd),
-    networkPct: bigToPercent(network, IPV4_MAX),
+    networkPct: bigToPercent(network, IPV4_SPACE),
     widthPct: bigToPercent(hostCount, IPV4_SPACE),
   };
 }
@@ -517,7 +517,7 @@ const analysis = computed(() => {
         relation,
         start,
         end,
-        leftPct: bigToPercent(start, IPV4_MAX),
+        leftPct: bigToPercent(start, IPV4_SPACE),
         widthPct: bigToPercent(end - start + 1n, IPV4_SPACE),
         text: overlapText(relation, a, b, start, end),
       };

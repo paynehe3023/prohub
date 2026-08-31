@@ -50,12 +50,13 @@ export const tools = [
   {
     id: 'text-formatter',
     title: '文本格式化工具',
-    desc: 'JSON格式化、Base64编解码、正则测试、Markdown预览等文本处理利器',
+    desc: 'JSON 格式化、Base64 与 URL 编解码、大小写和空白处理等文本工具',
     category: '文本处理',
     icon: 'IconFileText',
-    route: '/tools/coming-soon',
-    status: 'coming_soon',
-    keywords: ['JSON', '格式化', 'Base64', '正则', 'Markdown'],
+    route: '/tools/text-formatter',
+    status: 'online',
+    isNew: true,
+    keywords: ['JSON', '格式化', '压缩', '校验', 'Base64', 'URL', '大小写', '空白处理'],
   },
   {
     id: 'media-studio',
@@ -85,8 +86,9 @@ export const tools = [
     desc: '智能配色方案生成、渐变色预览、Tailwind CSS色板一键复制',
     category: '实用计算',
     icon: 'IconPalette',
-    route: '/tools/coming-soon',
-    status: 'coming_soon',
+    route: '/tools/color-palette',
+    status: 'online',
+    isNew: true,
     keywords: ['配色', '调色板', '渐变色', 'Tailwind', '颜色'],
   },
   {
@@ -95,9 +97,10 @@ export const tools = [
     desc: '长度、重量、温度、存储容量、汇率等多种单位在线换算',
     category: '实用计算',
     icon: 'IconArrowsExchange',
-    route: '/tools/coming-soon',
-    status: 'coming_soon',
-    keywords: ['换算', '单位', '汇率', '长度', '重量'],
+    route: '/tools/unit-converter',
+    status: 'online',
+    isNew: true,
+    keywords: ['换算', '单位', '汇率', '长度', '重量', '温度', '面积', '体积', '速度', '时间', '数据存储'],
   },
 ];
 

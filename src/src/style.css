@@ -5,6 +5,7 @@
 html {
   height: 100%;
   background: var(--prohub-background-color, #f8fafc);
+  overflow-x: hidden;
 }
 
 :root {
@@ -55,21 +56,14 @@ body {
   min-height: 100vh;
 }
 
-/* 壁纸层 = sticky 视口尺寸层：
-   1. 高度锁定 100vh（iOS 上是常量），宽度 100% —— 背景图按"屏幕比例"cover 居中裁剪，
-      彻底消除旧方案"cover 按文档总高度放大"导致的长页面壁纸拉伸/变形；
-   2. sticky top:0 滚动时吸附视口顶部，内容从壁纸上滚过，形成沉浸式手机壁纸效果；
-      吸附由合成器驱动，无 JS、无滚动监听、无 transform；
-   3. margin-bottom: -100vh 抵消文档流占位，内容仍从页面顶部开始；
-   4. 未使用 fixed / 100dvh / 100lvh / visualViewport，符合背景冻结约束。 */
+/* 壁纸层 = 固定视口尺寸层：
+   1. fixed + inset: 0 让壁纸脱离文档流，滚动页面时保持在同一视口位置；
+   2. 高度锁定 100vh（iOS 上是常量），宽度 100% —— 壁纸按屏幕比例 cover 居中裁剪，
+      避免按文档总高度放大造成的长页面构图失真；
+   3. 壁纸层不使用 JS、滚动监听、transform 或动态视口高度计算。 */
 .app-page-background {
   background-color: var(--prohub-background-color);
   isolation: isolate;
-  contain: layout paint size style;
-  transform: translate3d(0, 0, 0);
-  -webkit-transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
   -webkit-mask-image: linear-gradient(#000, #000);
 }
 
@@ -80,10 +74,6 @@ body {
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
-  transform: translate3d(0, 0, 0);
-  -webkit-transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
 }
 
 .app-page-background::after {

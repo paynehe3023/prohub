@@ -10,6 +10,7 @@ const wallpapersRoute = require('./routes/wallpapers');
 const forbiddenWordsRoute = require('./routes/forbidden-words');
 const qrShortenRoute = require('./routes/qr-shorten');
 const feedbackRoute = require('./routes/feedback');
+const notificationsRoute = require('./routes/notifications');
 const { registerClipboardRealtime } = require('./realtime/clipboard');
 
 const app = express();
@@ -27,9 +28,10 @@ app.use(morgan('combined'));
 
 // ---- CORS ----
 app.use(cors({
-  origin: '*',
+  origin: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
 }));
 
 // ---- Body parsing ----
@@ -43,6 +45,7 @@ app.use('/api', wallpapersRoute);
 app.use('/api', forbiddenWordsRoute);
 app.use('/api', qrShortenRoute);
 app.use('/api', feedbackRoute);
+app.use('/api', notificationsRoute);
 registerClipboardRealtime(app, server);
 
 // ---- Static files (production frontend build) ----
