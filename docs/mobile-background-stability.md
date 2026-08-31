@@ -18,6 +18,16 @@
 
 旧方案背景层 `absolute inset: 0` 跟随整篇文档高度，首页等长页面容器达数屏高（如 390px × 2600px），`cover` 为盖满容器把壁纸等比放大约 3 倍，用户只能看到原图中间一小块，构图破坏 → 视觉上“拉伸/变形”。`cover` 本身不改变宽高比，问题在于它按文档高度而非屏幕高度裁剪。
 
+### 壁纸刷新闪烁修复（第 6 轮，2026-08-31）
+
+用户反馈：更换壁纸后每次刷新页面，会先闪一下太空壁纸（默认壁纸），再变为所选壁纸。根因是 `localStorage` 只存壁纸 id（如 `bing:20260831`），恢复时必须等 Bing 数据异步加载完才能找到壁纸对象：CSS 默认纯色 → onMounted 找不到 id 回退默认壁纸（第一次闪）→ Bing 加载完再 applyBackground（第二次闪）。修复（三层消除）：
+
+1. `index.html` `<head>` 内联同步 JS：Vue 挂载前从 `localStorage` 读壁纸 JSON 并直接设好 `--prohub-background-image` / `--prohub-background-color` CSS 变量，首屏渲染时壁纸已就位；
+2. `BgSwitcher.vue` `applyBackground` 改为存完整 JSON（`{id, imageUrl, color, textColor, label}`）到 `prohub-background`，刷新时不再依赖 Bing 数据即可恢复；
+3. Bing 数据加载完成后只同步选中高亮，不再重新 `applyBackground`。
+
+`index.html` 的壁纸内联恢复脚本与 `prohub-background` JSON 存储格式属于壁纸恢复链路，一并纳入冻结范围。
+
 ## 变更历史
 
 | 轮次 | 触发（用户反馈） | 变更 |
@@ -27,6 +37,7 @@
 | 3 | “页面上部和下部的黑边依然存在” | 尝试 safe-area 负 inset 外延 + 内容层 env padding + viewport meta 修改 |
 | 4 | “壁纸被拉伸” + “把背景壁纸恢复到正常” | 回退第 3 轮全部改动（含 md 文档恢复原状） |
 | 5 | “壁纸自然是拉伸，我不要有拉伸的” | 定位拉伸根因：cover 按文档总高度放大。改用 sticky 视口尺寸背景，壁纸始终按屏幕比例自然裁剪 |
+| 6 | “更改壁纸后刷新，太空壁纸都会闪一下” | localStorage 存完整壁纸 JSON + index.html 内联同步恢复，消除首屏壁纸闪烁 |
 
 ## 已完成的静态验证
 

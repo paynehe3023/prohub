@@ -23,26 +23,30 @@
           </div>
 
           <div class="flex-1 overflow-y-auto space-y-4 p-6">
-            <p class="text-sm leading-6 text-slate-600 dark:text-slate-300">如果这个工作台帮你节省了时间，可以请作者喝杯咖啡。</p>
-            <div class="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-900">
+            <p class="text-sm leading-6 text-slate-600 dark:text-slate-300">如果 proHub 恰好帮到了你，欢迎请作者喝杯咖啡；不强求，你的使用与反馈已是最好的鼓励。</p>
+
+            <!-- 两个收款码并排展示：微信在前，尺寸一致；
+                 移动端点击 → 支付宝直达"输入金额"付款页，微信打开扫一扫（个人码无公开直达 scheme） -->
+            <div class="grid grid-cols-2 gap-3">
               <button
                 v-for="method in methods"
                 :key="method.id"
                 type="button"
-                class="rounded-xl px-3 py-2 text-sm font-semibold transition-colors"
-                :class="activeMethod === method.id ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'"
-                @click="activeMethod = method.id"
+                class="group rounded-2xl border border-slate-200 bg-white p-2 transition motion-interactive active:scale-95 dark:border-slate-800 dark:bg-slate-900"
+                :aria-label="`用${method.label}赞赏`"
+                @click="jumpToApp(method.id)"
               >
-                {{ method.label }}
+                <span class="mb-2 block text-xs font-semibold tracking-wide text-slate-600 dark:text-slate-300">{{ method.label }}</span>
+                <img
+                  :src="method.qrUrl"
+                  :alt="`${method.label}二维码`"
+                  class="aspect-square w-full rounded-xl object-contain"
+                  draggable="false"
+                />
               </button>
             </div>
-            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800">
-              <img v-if="activeMethod === 'wechat'" src="/donate-qr.jpg" alt="微信赞赏二维码" class="mx-auto aspect-square w-full max-w-[260px] object-contain" />
-              <div v-else class="flex aspect-square items-center justify-center rounded-xl bg-slate-50 p-6 text-center text-sm leading-6 text-slate-500 dark:bg-slate-900 dark:text-slate-400">
-                暂未配置支付宝收款码
-              </div>
-            </div>
-            <p class="text-center text-xs text-slate-500 dark:text-slate-400">感谢每一份支持，愿你今天也有好心情。</p>
+
+            <p class="text-xs leading-5 text-slate-400 dark:text-slate-500">手机上点击二维码即可唤起对应 App：支付宝会直达付款页输入金额；微信请先截图，再在扫一扫中从相册识别。谢谢你的心意～</p>
           </div>
         </section>
       </div>
@@ -51,7 +55,6 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
 import { IconX } from '@tabler/icons-vue';
 
 defineProps({
@@ -59,11 +62,35 @@ defineProps({
 });
 
 const emit = defineEmits(['update:open']);
+
+// 微信在前；两个码等大（grid 等宽 + aspect-square）
+// 支付宝收款码真实链接（解码自 donate-qr-alipay.jpg），用于 scheme 直达付款页
+const ALIPAY_QR_URL = 'https://qr.alipay.com/fkx10297lg1x1ccowmy1pdd';
+
 const methods = [
-  { id: 'wechat', label: '微信' },
-  { id: 'alipay', label: '支付宝' },
+  { id: 'wechat', label: 'WeChat', qrUrl: '/donate-qr-wechat.jpg' },
+  { id: 'alipay', label: 'AiPay', qrUrl: '/donate-qr-alipay.jpg' },
 ];
-const activeMethod = ref('wechat');
+
+// 移动端（粗指针 / 移动 UA）点击二维码 → 唤起对应 App：
+// - 支付宝：alipays scheme 携带收款码 URL，直接进入"向TA付款"输入金额页（appId 20000186 为扫码结果容器）
+// - 微信：个人收款码（wxp://）无公开 scheme 直达金额页，仅能打开扫一扫，由用户从相册识别截图
+// 桌面端点击无动作
+function isMobileDevice() {
+  const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+  const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  const iPadOs = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  return coarse || uaMobile || iPadOs;
+}
+
+function jumpToApp(methodId) {
+  if (!isMobileDevice()) return;
+  if (methodId === 'alipay') {
+    window.location.href = `alipays://platformapi/startapp?appId=20000186&url=${encodeURIComponent(ALIPAY_QR_URL)}`;
+    return;
+  }
+  window.location.href = 'weixin://scanqrcode';
+}
 
 function close() {
   emit('update:open', false);

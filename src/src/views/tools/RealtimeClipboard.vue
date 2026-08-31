@@ -422,7 +422,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { useHead } from '@vueuse/head';
-import { useRoute, useRouter } from 'vue-router';
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import QRCode from 'qrcode';
 import { io } from 'socket.io-client';
 import { apiConfig } from '../../config/api';
@@ -482,6 +482,10 @@ const imageCompressionMaxEdge = 2048;
 const imageCompressionQuality = 0.85;
 const uploadTimeoutMs = 120000;
 const sessionRequestTimeoutMs = 10000;
+
+// #region debug-point A:runtime-report
+const debugClipboard = (hypothesisId, msg, data = {}) => fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'clipboard-reconnect', runId: 'pre-fix', hypothesisId, location: 'RealtimeClipboard.vue', msg: `[DEBUG] ${msg}`, data, ts: Date.now() }) }).catch(() => {});
+// #endregion
 const maxUploadRetries = 2;
 const maxFileBytes = 50 * 1024 * 1024;
 const maxTextPreviewBytes = 5 * 1024 * 1024;
@@ -713,6 +717,7 @@ function clearRoomSessionRetry({ resetAttempts = true } = {}) {
 }
 
 async function requestRoomSession(nextRoomId, intent = 'join', { forceGuest = false } = {}) {
+  debugClipboard('A', 'room session request', { roomId: normalizeRoomId(nextRoomId), intent, forceGuest, role: role.value, hasHostToken: Boolean(hostToken.value), persisted: readPersistedRoomState() });
   const normalizedRoomId = normalizeRoomId(nextRoomId);
   if (!normalizedRoomId) throw new Error('房间号无效');
   const shouldCreate = intent === 'create' && !forceGuest;
@@ -751,6 +756,7 @@ async function requestRoomSession(nextRoomId, intent = 'join', { forceGuest = fa
   }
 
   roomId.value = normalizedRoomId;
+    debugClipboard('A', 'room session success', { roomId: normalizedRoomId, role: data.role, hasHostToken: Boolean(data.hostToken) });
   const confirmedHost = !forceGuest && data.role === 'host' && Boolean(data.hostToken);
   isHost.value = confirmedHost;
   role.value = confirmedHost ? 'host' : 'guest';
@@ -1082,6 +1088,7 @@ function handleRoomJoinFailure(message) {
 }
 
 function connectSocket() {
+  debugClipboard('B', 'connect socket', { roomId: roomId.value, clientId: selfClientId, hasHostToken: Boolean(hostToken.value), role: role.value });
   disconnectSocket();
   if (!roomId.value) return;
 
@@ -1103,15 +1110,18 @@ function connectSocket() {
   });
 
   socketInstance.on('connect', () => {
+    debugClipboard('B', 'socket connected', { roomId: roomId.value, socketId: socketInstance?.id });
     socketState.value = 'connected';
     joinSocketRoom();
   });
 
-  socketInstance.on('disconnect', () => {
+  socketInstance.on('disconnect', (reason) => {
+    debugClipboard('B', 'socket disconnected', { reason, roomId: roomId.value });
     socketState.value = 'offline';
   });
 
-  socketInstance.io.on('reconnect_attempt', () => {
+  socketInstance.io.on('reconnect_attempt', (attempt) => {
+    debugClipboard('B', 'socket reconnect attempt', { attempt, roomId: roomId.value });
     socketState.value = 'reconnecting';
   });
 
@@ -1122,6 +1132,7 @@ function connectSocket() {
   });
 
   socketInstance.on('connect_error', (error) => {
+    debugClipboard('D', 'socket connect error', { message: error?.message, description: error?.description, context: error?.context, roomId: roomId.value, clientId: selfClientId, hasHostToken: Boolean(hostToken.value) });
     socketState.value = 'offline';
     showToast('error', '连接失败', error.message || 'Socket 连接失败');
   });
@@ -1185,6 +1196,23 @@ function disconnectSocket() {
   if (!activeSocket) return;
   activeSocket.removeAllListeners();
   activeSocket.disconnect();
+}
+
+function destroyHostRoomOnRouteLeave() {
+  const activeSocket = socketInstance;
+  if (!isHost.value || !activeSocket || !roomId.value || !hostToken.value) return Promise.resolve();
+  const payload = { roomId: roomId.value, hostToken: hostToken.value };
+  debugClipboard('A', 'host route leave destroys room', { roomId: roomId.value });
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    activeSocket.emit('room:destroy', payload, finish);
+    window.setTimeout(finish, 500);
+  });
 }
 
 function releaseLocalPreviewUrls(items) {
@@ -2126,6 +2154,11 @@ watch(roomUrl, () => {
 
 watch(shareOriginDraft, (value) => {
   window.localStorage.setItem(SHARE_ORIGIN_STORAGE_KEY, String(value || '').trim());
+});
+
+onBeforeRouteLeave(async () => {
+  await destroyHostRoomOnRouteLeave();
+  cleanupCurrentRoomConnections();
 });
 
 onMounted(() => {

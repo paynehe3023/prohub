@@ -521,12 +521,12 @@ function resolveClip(room, payload, msgId, clientId) {
 }
 
 function handleJoin(room, payload, connectionId = null, metadata = {}) {
-  if (room.hostDisconnectTimer) {
+  const isHost = hasValidHostToken(room, payload?.hostToken);
+  if (isHost && room.hostDisconnectTimer) {
     clearTimeout(room.hostDisconnectTimer);
     room.hostDisconnectTimer = null;
   }
   touchRoom(room);
-  const isHost = hasValidHostToken(room, payload?.hostToken);
   if (connectionId) {
     registerRoomDevice(room, connectionId, payload, metadata, isHost);
   }
@@ -794,8 +794,8 @@ function registerClipboardRealtime(app, httpServer) {
           room.hostDisconnectTimer = setTimeout(() => {
             room.hostDisconnectTimer = null;
             const currentRoom = rooms.get(room.roomId);
-            if (currentRoom === room && !room.hostConnectionId && room.devices.size === 0) {
-              destroyRoom(room.roomId, 'Host 已退出，房间已被销毁');
+            if (currentRoom === room && !room.hostConnectionId) {
+              destroyRoom(room.roomId, 'Host 离开后未在宽限期内恢复，房间已被销毁');
             }
           }, 15000);
           room.hostDisconnectTimer.unref?.();
