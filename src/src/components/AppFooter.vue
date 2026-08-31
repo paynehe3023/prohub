@@ -1,5 +1,5 @@
 <template>
-  <footer class="liquid-glass-strong mt-auto mx-4 sm:mx-6 lg:mx-8 mb-4">
+  <footer class="app-footer liquid-glass-strong mx-4 sm:mx-6 lg:mx-8 mb-4">
     <div class="px-6 py-6">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div>
@@ -34,3 +34,9 @@
 <script setup>
 import { IconBox } from '@tabler/icons-vue'; const year = new Date().getFullYear();
 </script>
+
+<style scoped>
+.app-footer {
+  flex-shrink: 0;
+}
+</style>

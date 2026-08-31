@@ -17,6 +17,18 @@ export default defineConfig(({ mode }) => {
         qrcode: fileURLToPath(new URL('./src/lib/qrcode-shim.js', import.meta.url)),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'heic2any': ['heic2any'],
+            'piexif': ['piexifjs'],
+            'vendor': ['vue', 'vue-router'],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 1500,
+    },
     server: {
       host: '0.0.0.0',
       port: 5173,

@@ -1,5 +1,5 @@
 <template>
-  <div class="mobile-interface-shell min-h-dvh overflow-x-hidden px-4 py-8 pb-32 text-slate-900 dark:text-slate-100 overflow-y-auto">
+  <div class="mobile-interface-shell min-h-dvh overflow-x-hidden px-4 py-8 pb-32 text-slate-900 dark:text-slate-100">
     <div class="max-w-7xl mx-auto space-y-6">
       <BackButton />
       <div v-if="isRoomDestroyed && !isHost" class="rounded-3xl border border-amber-300/70 bg-gradient-to-r from-amber-500/20 via-rose-500/20 to-rose-600/20 px-5 py-4 text-amber-900 shadow-xl shadow-rose-950/20 dark:text-amber-100">

@@ -16,11 +16,10 @@
       <div class="mt-6 flex items-center justify-center gap-3">
         <button
           type="button"
-          @click="scrollToTools"
+          @click="openAbout"
           class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition-all hover:bg-blue-500 active:scale-95"
         >
-          开始使用
-          <IconArrowDown class="w-4 h-4" />
+          关于
         </button>
         <a href="https://github.com/paynehe3023/prohub" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-zinc-200 dark:hover:bg-slate-700">
           <IconBrandGithub class="w-4 h-4" /> GitHub
@@ -87,14 +86,14 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useHead } from '@vueuse/head';
-import { IconSparkles, IconArrowDown, IconBrandGithub, IconMoodEmpty, IconShieldCheck, IconBolt, IconDeviceMobile } from '@tabler/icons-vue';
+import { IconSparkles, IconBrandGithub, IconMoodEmpty, IconShieldCheck, IconBolt, IconDeviceMobile } from '@tabler/icons-vue';
 import { tools, categories, getToolsByCategory } from '../config/tools';
 import ToolCard from '../components/ToolCard.vue';
 useHead({ title: 'proHub - 全能在线工具箱' });
 const activeCategory = ref('all');
 const filteredTools = computed(() => getToolsByCategory(activeCategory.value));
-function scrollToTools() {
-  document.getElementById('tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+function openAbout() {
+  window.dispatchEvent(new Event('prohub:open-about'));
 }
 </script>
 
