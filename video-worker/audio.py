@@ -30,14 +30,34 @@ def _track_info(track: dict) -> dict:
         (item.get("text") for item in metadata or [] if item.get("title") == "Album"),
         None,
     )
+    title_zh = track.get("title_zh") or track.get("title_zh_cn")
+    artist_zh = track.get("artist_zh") or track.get("artist_zh_cn")
     return {
         "status": "matched" if track else "not_found",
         "title": track.get("title"),
+        "title_zh": title_zh,
         "artist": track.get("subtitle"),
+        "artist_zh": artist_zh,
         "album": album,
         "key": track.get("key"),
         "source_url": share.get("href") or track.get("url"),
     }
+
+
+def _safe_filename(value: str) -> str:
+    cleaned = "".join("_" if char in '\\\/:*?\"<>|' else char for char in value)
+    return " ".join(cleaned.split()).strip() or "未命名"
+
+
+def _rename_audio(path: Path, identification: dict) -> Path:
+    title = identification.get("title_zh") or identification.get("title")
+    artist = identification.get("artist_zh") or identification.get("artist")
+    if not title or not artist:
+        return path
+    target = path.with_name(f"{_safe_filename(title)}_{_safe_filename(artist)}{path.suffix}")
+    if target != path:
+        path.replace(target)
+    return target
 
 
 async def _recognize_file(path: Path) -> dict:
@@ -76,9 +96,9 @@ def extract_bgm(video_path: str, output_dir: str) -> dict:
     except ImportError:
         identification = {"status": "unavailable", "error": "请安装 shazamio 以启用音乐识别。"}
 
+    mp3_path = _rename_audio(mp3_path, identification)
     return {
         "duration": None,
-        "segments": [],
         "identification": identification,
         "source_url": identification.get("source_url"),
         "audio": {"filename": mp3_path.name, "path": str(mp3_path), "format": "mp3"},
@@ -165,4 +185,8 @@ def analyze_bgm(video_path: str, output_dir: str) -> dict:
     result["identification"] = matched or {"status": "not_found" if result["segments"] else "unavailable"}
     if result["identification"].get("source_url"):
         result["source_url"] = result["identification"]["source_url"]
+    if result.get("audio", {}).get("filename"):
+        separated_path = _rename_audio(Path(result["audio"]["path"]), result["identification"])
+        result["audio"]["filename"] = separated_path.name
+        result["audio"]["path"] = str(separated_path)
     return result

@@ -9,8 +9,8 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { IconChevronRight } from '@tabler/icons-vue';
 import BackButton from './BackButton.vue';
-defineProps({ label: { type: String, required: true } });
+defineProps<{ label: string }>();
 </script>

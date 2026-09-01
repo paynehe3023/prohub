@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 declare module '@tabler/icons-vue' {
   import type { DefineComponent } from 'vue'
 

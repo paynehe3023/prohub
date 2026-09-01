@@ -21,7 +21,7 @@ const videoWorkerUrl = process.env.VIDEO_WORKER_URL || 'http://video-worker:8090
 const uploadDir = process.env.VIDEO_UPLOAD_DIR || path.join(__dirname, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 const uploadSessions = new Map();
-const uploadChunkLimit = 8 * 1024 * 1024;
+const uploadChunkLimit = 512 * 1024;
 
 app.post('/video-upload/sessions', express.json({ limit: '1mb' }), (req, res) => {
   const { filename, size, type } = req.body || {};
