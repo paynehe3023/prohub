@@ -24,3 +24,36 @@
 - Docker Compose 增加 `video-worker` 服务、持久化数据卷、Worker 地址和 CORS 配置；前端开发环境继续通过 Vite `/video-worker` 代理联调。
 - 当前限制：OCR 默认仍为 Tesseract 中英文固定字幕区域；ShazamIO 识别需要网络检索；Whisper/Demucs 模型首次运行需要下载；尚未完成完全离线音频指纹库、GPU 专用镜像和真实视频全流程测试。
 - 验证：Python `compileall`、Node 语法检查、前端 Vite 构建和 `docker compose config` 通过；Worker Docker 构建受 Debian 软件源网络速度影响，尚未完成容器启动验证。
+
+---
+
+## 三十二. SSE 断线恢复与正式网页验证（2026-09-01）
+
+- 修复视频 Worker SSE 长时间无进度事件时被浏览器或代理关闭的问题：服务端空闲 15 秒发送一次心跳事件，保持连接活跃。
+- 修复前端将任意 SSE 断线直接判定为任务失败的问题：断线后查询 `/jobs/{job_id}` 真实状态，任务处理中自动重连，已完成任务直接加载结果，只有 Worker 明确失败时才显示错误。
+- 修复前端对命名 SSE `progress` 事件的监听，增加重连定时器清理，避免任务结束后继续发起连接。
+- 重新构建并重启 Docker 服务，`prohub`、`prohub-video-worker`、`prohub-rembg` 容器均正常运行。
+- 验证正式网页代理 `http://localhost:3000/video-worker/health` 和 Worker `http://localhost:8090/health` 均返回 `status: ok`；前端 Vite 生产构建通过。
+- 当前测试文件实际名称为 `test-videos/test_vedio3_onlyBgm.mp4`，正式网页应使用该文件进行 BGM 流程复测。
+
+---
+
+## 三十三. BGM 快速提取与人声分离拆分（2026-09-01）
+
+- 将原先 BGM 任务中的 FFmpeg 音频提取、Librosa 分析、Demucs 分离、变点切片和 ShazamIO 识别拆分为独立流程。
+- 新增快速 `BGM 提取`任务：仅使用 FFmpeg 从视频提取音频并直接导出 MP3，不再默认执行 Demucs、Librosa 或 ShazamIO，降低短视频处理耗时。
+- 新增独立 `人声/BGM 分离`任务：仅在用户选择时启动 Demucs，并保留原有音频分析、变点切片和歌曲识别能力。
+- 分离任务输出文件改为 `bgm-separated.mp3`，避免覆盖普通 BGM 提取生成的 `bgm.mp3`。
+- 后端新增 `bgm_separation` 任务类型及对应结果、下载 URL；前端新增“人声/BGM 分离”选项，并分别展示快速提取和分离结果。
+- 验证：前端 `npm run build` 通过；Docker 镜像重新构建成功；`prohub`、`prohub-video-worker`、`prohub-rembg` 容器正常运行；Worker 健康检查返回 `status: ok`。
+
+---
+
+## 三十四. BGM 结果展示优化（2026-09-01）
+
+- BGM 识别结果新增歌曲名称、作者、专辑、Shazam 结果标识和歌曲源链接；源链接可点击打开，用于确认当前识别结果是否正确。
+- 快速 BGM 提取完成后保留 MP3 文件下载地址，并在结果卡片中提供“直接下载 BGM”链接；普通下载按钮继续可用。
+- 人声/BGM 分离结果沿用相同的歌曲信息、源链接和 MP3 下载展示方式。
+- 移除前端“视频 Worker 地址”配置区块；正式网页通过内置 `/video-worker` 代理访问 Worker，该地址输入框对正式用户没有实际配置价值。
+- 后端扩展 Shazam 结果解析，提取 `title`、`artist`、`album`、`source_url` 等字段，并将识别结果传递到前端。
+- 验证：前端 `npm run build` 通过；宿主机未安装 `python` 命令，未执行本地 Python 编译检查，后续以 Docker Worker 构建验证 Python 代码。

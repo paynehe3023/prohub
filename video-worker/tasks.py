@@ -47,10 +47,11 @@ class JobManager:
                 model_name,
                 selected_tasks,
             )
-            bgm = job.result.get("bgm") if isinstance(job.result, dict) else None
-            audio = bgm.get("audio") if isinstance(bgm, dict) else None
-            if isinstance(audio, dict) and audio.get("filename"):
-                audio["url"] = f"/jobs/{job.id}/files/{audio['filename']}"
+            for result_key in ("bgm", "bgm_separation"):
+                bgm = job.result.get(result_key) if isinstance(job.result, dict) else None
+                audio = bgm.get("audio") if isinstance(bgm, dict) else None
+                if isinstance(audio, dict) and audio.get("filename"):
+                    audio["url"] = f"/jobs/{job.id}/files/{audio['filename']}"
             job.status = "completed"
         except Exception as exc:
             job.status = "failed"

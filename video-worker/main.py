@@ -63,7 +63,7 @@ async def create_job(
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(400, "tasks 必须是 JSON 数组。") from exc
-    selected_tasks = {task for task in requested_tasks if task in {"subtitle", "transcript", "bgm"}}
+    selected_tasks = {task for task in requested_tasks if task in {"subtitle", "transcript", "bgm", "bgm_separation"}}
     if not selected_tasks:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(400, "至少选择一个有效任务。")

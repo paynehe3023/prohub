@@ -26,9 +26,10 @@
             @dragleave.prevent="dragging = false"
             @drop.prevent="onDrop"
           >
-            <IconCloudUpload class="w-10 h-10 mx-auto mb-3 text-ios-blue" />
+            <IconCloudUpload class="w-8 h-8 mx-auto mb-2 text-ios-blue" />
             <p class="text-sm text-white text-glass">拖拽视频到这里</p>
             <p class="text-xs text-zinc-500 mt-2">支持 MP4、MOV、WEBM、MKV，建议不超过 2GB</p>
+            <p class="text-[0.6875rem] text-zinc-600 mt-1">拖拽或选择文件后，可在下方预览并选择提取任务</p>
             <label class="btn-ios btn-ios-primary inline-flex mt-5 cursor-pointer text-xs">
               <IconFolderOpen class="w-4 h-4" />选择视频
               <input type="file" class="hidden" accept="video/*,.mkv" @change="onFileChange" />
@@ -74,12 +75,19 @@
           <div v-if="!resultCount" class="rounded-[16px] border border-dashed border-white/15 p-8 text-center text-xs text-zinc-500">完成任务后，结果会显示在这里</div>
           <article v-for="result in results" :key="result.id" class="rounded-[16px] liquid-glass-inset p-3 space-y-2">
             <div class="flex items-center gap-2"><span class="w-7 h-7 rounded-lg bg-ios-blue/15 text-ios-blue flex items-center justify-center"><component :is="iconFor(result.kind)" class="w-4 h-4" /></span><div class="min-w-0 flex-1"><p class="text-sm text-white">{{ result.title }}</p><p class="text-[0.6875rem] text-zinc-500">{{ result.meta }}</p></div><span class="text-[0.6875rem] text-ios-green">已完成</span></div>
-            <a v-if="result.kind === 'bgm' && result.url" :href="resolveWorkerUrl(result.url)" target="_blank" rel="noreferrer" class="text-xs text-ios-blue hover:underline">下载分离后的 BGM 音频</a>
-            <pre class="max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs text-zinc-300 leading-relaxed">{{ result.content }}</pre>
+            <div v-if="result.kind === 'bgm' || result.kind === 'bgm_separation'" class="rounded-xl bg-black/15 p-3 space-y-2">
+              <p class="text-sm text-white truncate">{{ result.track?.title || '暂未识别歌曲名称' }}</p>
+              <p v-if="result.track?.artist" class="text-xs text-zinc-400">作者：{{ result.track.artist }}</p>
+              <p v-if="result.track?.album" class="text-xs text-zinc-500">专辑：{{ result.track.album }}</p>
+              <div class="flex flex-wrap gap-3 text-xs">
+                <a v-if="result.sourceUrl" :href="result.sourceUrl" target="_blank" rel="noreferrer" class="text-ios-blue hover:underline">打开歌曲源链接</a>
+                <a v-if="result.url" :href="resolveWorkerUrl(result.url)" download class="text-ios-green hover:underline">直接下载 BGM</a>
+              </div>
+            </div>
+            <pre v-if="result.content" class="max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs text-zinc-300 leading-relaxed">{{ result.content }}</pre>
             <div class="flex gap-2"><button type="button" class="rounded-xl bg-ios-blue/20 text-ios-blue px-3 py-2 text-xs hover:bg-ios-blue/30" @click="downloadResult(result)"><IconDownload class="w-3.5 h-3.5 inline mr-1" />下载</button><button type="button" class="rounded-xl liquid-glass-inset text-zinc-300 px-3 py-2 text-xs hover:text-white" @click="copyResult(result)"><IconCopy class="w-3.5 h-3.5 inline mr-1" />复制</button></div>
           </article>
         </section>
-        <section class="liquid-glass p-4 space-y-3"><h2 class="text-sm font-semibold text-white text-glass">视频 Worker 地址</h2><p class="text-xs text-zinc-500 leading-relaxed">默认使用 VITE_VIDEO_WORKER_URL 或 http://localhost:8090；清空地址后才会进入本地演示模式（不会上传视频）。</p><input v-model="workerUrl" type="url" placeholder="http://localhost:8090" class="w-full rounded-xl liquid-glass-inset px-3 py-2 text-xs text-white outline-none" /></section>
       </aside>
     </div>
   </div>
@@ -91,16 +99,18 @@ import { IconCloudUpload, IconCopy, IconDownload, IconFileMusic, IconFileText, I
 import BreadcrumbNav from '../../components/BreadcrumbNav.vue';
 
 /** 支持的处理任务。 */
-type TaskId = 'subtitle' | 'transcript' | 'bgm';
+type TaskId = 'subtitle' | 'transcript' | 'bgm' | 'bgm_separation';
 type ResultKind = TaskId;
 interface Task { id: TaskId; label: string; description: string; icon: unknown }
 interface LogEntry { time: string; message: string; type?: 'info' | 'success' | 'error' }
-interface ExtractionResult { id: string; kind: ResultKind; title: string; meta: string; content: string; url?: string; filename?: string }
+interface TrackInfo { title?: string; artist?: string; album?: string; source_url?: string; status?: string }
+interface ExtractionResult { id: string; kind: ResultKind; title: string; meta: string; content: string; url?: string; filename?: string; track?: TrackInfo; sourceUrl?: string }
 
 const tasks: Task[] = [
   { id: 'subtitle', label: '字幕提取', description: '识别并导出 SRT / VTT 字幕文件', icon: IconFileText },
   { id: 'transcript', label: '语音转录', description: '生成可编辑的纯文本转录稿', icon: IconFileText },
-  { id: 'bgm', label: 'BGM 提取', description: '分离视频音频并下载为 MP3', icon: IconFileMusic },
+  { id: 'bgm', label: 'BGM 提取', description: '快速提取视频音频并下载为 MP3', icon: IconFileMusic },
+  { id: 'bgm_separation', label: '人声/BGM 分离', description: '使用 Demucs 分离人声与背景音乐', icon: IconFileMusic },
 ];
 const videoFile = ref<File | null>(null);
 const videoUrl = ref('');
@@ -131,9 +141,9 @@ function onFileChange(event: Event) { acceptFile((event.target as HTMLInputEleme
 function onDrop(event: DragEvent) { dragging.value = false; acceptFile(event.dataTransfer?.files?.[0]); }
 function onMetadata(event: Event) { const video = event.target as HTMLVideoElement; videoMeta.value = `${Math.floor(video.duration / 60)}:${String(Math.floor(video.duration % 60)).padStart(2, '0')} · ${video.videoWidth} × ${video.videoHeight}`; }
 function toggleAll() { selectedTasks.value = allSelected.value ? [] : tasks.map(task => task.id); }
-function iconFor(kind: ResultKind) { return kind === 'bgm' ? IconFileMusic : IconFileText; }
-function makeResult(kind: TaskId): ExtractionResult { const labels = { subtitle: '字幕文件', transcript: '转录文本', bgm: '背景音乐' }; const content = kind === 'subtitle' ? '1\n00:00:00,000 --> 00:00:04,000\n（演示字幕）视频处理完成后将替换为识别结果。' : kind === 'transcript' ? '（演示转录）视频处理完成后将替换为语音识别文本。' : 'BGM 音频已准备下载。'; return { id: `${kind}-${Date.now()}`, kind, title: labels[kind], meta: kind === 'bgm' ? 'MP3 · 音频轨道' : kind === 'subtitle' ? 'SRT · UTF-8' : 'TXT · UTF-8', content }; }
-interface WorkerResult { kind?: ResultKind; type?: ResultKind; title?: string; content?: string; text?: string; data?: string; url?: string; meta?: string; filename?: string; format?: string; audio?: { url?: string; filename?: string; format?: string }; segments?: unknown[]; srt?: string; subtitles?: WorkerResult; transcript?: WorkerResult; bgm?: WorkerResult }
+function iconFor(kind: ResultKind) { return kind === 'bgm' || kind === 'bgm_separation' ? IconFileMusic : IconFileText; }
+function makeResult(kind: TaskId): ExtractionResult { const labels = { subtitle: '字幕文件', transcript: '转录文本', bgm: '背景音乐', bgm_separation: '人声/BGM 分离' }; const content = kind === 'subtitle' ? '1\n00:00:00,000 --> 00:00:04,000\n（演示字幕）视频处理完成后将替换为识别结果。' : kind === 'transcript' ? '（演示转录）视频处理完成后将替换为识别结果。' : 'BGM 音频已准备下载。'; return { id: `${kind}-${Date.now()}`, kind, title: labels[kind], meta: kind === 'bgm' || kind === 'bgm_separation' ? 'MP3 · 音频轨道' : kind === 'subtitle' ? 'SRT · UTF-8' : 'TXT · UTF-8', content }; }
+interface WorkerResult { kind?: ResultKind; type?: ResultKind; title?: string; content?: string; text?: string; data?: string; url?: string; meta?: string; filename?: string; format?: string; audio?: { url?: string; filename?: string; format?: string }; audio_url?: string; audio_filename?: string; segments?: unknown[]; srt?: string; subtitles?: WorkerResult; transcript?: WorkerResult; bgm?: WorkerResult; bgm_separation?: WorkerResult; identification?: TrackInfo; track?: TrackInfo; source_url?: string }
 interface WorkerEvent { progress?: number; message?: string; task?: TaskId; done?: boolean; status?: string; result?: WorkerResult | WorkerResult[]; results?: WorkerResult[]; output?: WorkerResult | WorkerResult[]; subtitle_srt?: string; srt?: string; transcript?: string; bgm_segments?: unknown[] }
 
 function startExtraction() { if (!videoFile.value) return; processing.value = true; progress.value = 0; results.value = []; addLog(`已载入「${videoFile.value.name}」，准备处理 ${selectedTasks.value.length} 项任务`); if (workerUrl.value.trim()) createJob(); else { addLog('未配置 Worker 地址，进入本地演示模式', 'info'); runDemoProgress(); } }
@@ -207,27 +217,29 @@ function handleWorkerEvent(data: WorkerEvent) { if (data.type === 'heartbeat') r
 function formatWorkerContent(kind: ResultKind, item: WorkerResult) {
   if (kind === 'subtitle') return item.srt || item.content || item.text || '';
   if (kind === 'transcript') return item.segments ? JSON.stringify(item.segments, null, 2) : item.text || item.content || '';
-  if (kind === 'bgm') return item.segments ? JSON.stringify(item.segments, null, 2) : item.content || item.text || '';
+  if (kind === 'bgm' || kind === 'bgm_separation') return item.segments ? JSON.stringify(item.segments, null, 2) : item.content || item.text || '';
   return item.content || item.text || item.data || item.url || '';
 }
 function applyWorkerResults(incoming: WorkerResult | WorkerResult[]) {
   const source = Array.isArray(incoming) ? incoming : [incoming];
-  const items = source.flatMap(item => item.subtitles || item.transcript || item.bgm ? ([
+  const items = source.flatMap(item => item.subtitles || item.transcript || item.bgm || item.bgm_separation ? ([
     item.subtitles ? { ...item.subtitles, kind: 'subtitle' as const } : null,
     item.transcript ? { ...item.transcript, kind: 'transcript' as const } : null,
     item.bgm ? { ...item.bgm, kind: 'bgm' as const } : null,
+    item.bgm_separation ? { ...item.bgm_separation, kind: 'bgm_separation' as const } : null,
   ].filter(Boolean) as WorkerResult[]) : [item]);
   const mapped = items.map((item, index) => {
     const kind = item.kind || item.type || selectedTasks.value[index] || 'transcript';
     const audio = item.audio;
-    return { id: `${kind}-${Date.now()}-${index}`, kind, title: item.title || ({ subtitle: '字幕文件', transcript: '转录文本', bgm: '背景音乐' }[kind]), meta: item.meta || (kind === 'bgm' ? `${audio?.format?.toUpperCase() || 'MP3'} · 音频与识别结果` : kind === 'subtitle' ? 'SRT · UTF-8' : 'JSON · transcript segments'), content: formatWorkerContent(kind, item), url: audio?.url || item.url, filename: audio?.filename || item.filename };
+    const identification = item.identification || item.track;
+    return { id: `${kind}-${Date.now()}-${index}`, kind, title: item.title || ({ subtitle: '字幕文件', transcript: '转录文本', bgm: '背景音乐', bgm_separation: '人声/BGM 分离' }[kind]), meta: item.meta || (kind === 'bgm' || kind === 'bgm_separation' ? `${audio?.format?.toUpperCase() || 'MP3'} · 音频与识别结果` : kind === 'subtitle' ? 'SRT · UTF-8' : 'JSON · transcript segments'), content: formatWorkerContent(kind, item), url: audio?.url || item.url, filename: audio?.filename || item.filename, track: identification, sourceUrl: item.source_url || identification?.source_url };
   });
   results.value = [...results.value.filter(result => !mapped.some(item => item.kind === result.kind)), ...mapped];
 }
 function runDemoProgress() { sseState.value = 'connected'; let step = 0; demoTimer = window.setInterval(() => { step += 1; progress.value = Math.min(100, step * 20); addLog(`${progress.value < 100 ? '处理中' : '整理结果'}… ${progress.value}%`); if (step >= 5) { if (demoTimer) window.clearInterval(demoTimer); demoTimer = null; finishExtraction(true); } }, 420); }
 function finishExtraction(useDemoResults = false) { eventSource?.close(); eventSource = null; activeJobId = ''; sseState.value = 'closed'; if (useDemoResults) results.value = selectedTasks.value.map(makeResult); processing.value = false; progress.value = 100; statusMessage.value = `已完成 ${results.value.length} 项提取`; addLog('全部任务完成，可下载或复制结果', 'success'); }
 function resolveWorkerUrl(url: string) { return url.startsWith('http') ? url : `${workerUrl.value.replace(/\/$/, '')}/${url.replace(/^\//, '')}`; }
-function downloadResult(result: ExtractionResult) { const extension = result.kind === 'subtitle' ? 'srt' : result.kind === 'bgm' ? 'mp3' : 'txt'; if (result.url) { const link = document.createElement('a'); link.href = resolveWorkerUrl(result.url); link.download = result.filename || `${videoFile.value?.name.replace(/\.[^.]+$/, '') || 'video'}-${result.kind}.${extension}`; link.target = '_blank'; link.click(); return; } if (result.kind === 'bgm') { statusMessage.value = 'BGM 音频地址不可用，请检查 Worker 输出'; return; } const blob = new Blob([result.content], { type: 'text/plain;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${videoFile.value?.name.replace(/\.[^.]+$/, '') || 'video'}-${result.kind}.${extension}`; link.click(); URL.revokeObjectURL(link.href); }
+function downloadResult(result: ExtractionResult) { const extension = result.kind === 'subtitle' ? 'srt' : result.kind === 'bgm' || result.kind === 'bgm_separation' ? 'mp3' : 'txt'; if (result.url) { const link = document.createElement('a'); link.href = resolveWorkerUrl(result.url); link.download = result.filename || `${videoFile.value?.name.replace(/\.[^.]+$/, '') || 'video'}-${result.kind}.${extension}`; link.target = '_blank'; link.click(); return; } if (result.kind === 'bgm') { statusMessage.value = 'BGM 音频地址不可用，请检查 Worker 输出'; return; } const blob = new Blob([result.content], { type: 'text/plain;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${videoFile.value?.name.replace(/\.[^.]+$/, '') || 'video'}-${result.kind}.${extension}`; link.click(); URL.revokeObjectURL(link.href); }
 async function copyResult(result: ExtractionResult) { await navigator.clipboard?.writeText(result.content); statusMessage.value = '结果已复制到剪贴板'; }
 function reset() { eventSource?.close(); eventSource = null; if (reconnectTimer) window.clearTimeout(reconnectTimer); reconnectTimer = null; if (demoTimer) window.clearInterval(demoTimer); demoTimer = null; activeJobId = ''; if (videoUrl.value) URL.revokeObjectURL(videoUrl.value); videoFile.value = null; videoUrl.value = ''; videoMeta.value = '等待读取时长'; results.value = []; logs.value = []; progress.value = 0; processing.value = false; statusMessage.value = ''; sseState.value = 'idle'; }
 onBeforeUnmount(reset);

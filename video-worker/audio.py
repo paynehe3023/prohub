@@ -22,26 +22,67 @@ def _change_points(y, sr: int) -> list[float]:
     return sorted({round(point, 3) for point in points if point > 0})
 
 
-async def _recognize_segments(segment_paths: list[tuple[float, float, Path]]) -> list[dict]:
+def _track_info(track: dict) -> dict:
+    share = track.get("share") or {}
+    sections = track.get("sections") or []
+    metadata = sections[0].get("metadata") if sections else []
+    album = next(
+        (item.get("text") for item in metadata or [] if item.get("title") == "Album"),
+        None,
+    )
+    return {
+        "status": "matched" if track else "not_found",
+        "title": track.get("title"),
+        "artist": track.get("subtitle"),
+        "album": album,
+        "key": track.get("key"),
+        "source_url": share.get("href") or track.get("url"),
+    }
+
+
+async def _recognize_file(path: Path) -> dict:
     from shazamio import Shazam
 
-    shazam = Shazam()
+    try:
+        match = await Shazam().recognize(str(path))
+        return _track_info(match.get("track") or {})
+    except Exception as exc:
+        return {"status": "failed", "error": str(exc)}
+
+
+async def _recognize_segments(segment_paths: list[tuple[float, float, Path]]) -> list[dict]:
     results = []
     for start, end, path in segment_paths:
-        try:
-            match = await shazam.recognize(str(path))
-            track = match.get("track", {})
-            results.append({
-                "start": start,
-                "end": end,
-                "status": "matched" if track else "not_found",
-                "title": track.get("title"),
-                "artist": track.get("subtitle"),
-                "key": track.get("key"),
-            })
-        except Exception as exc:
-            results.append({"start": start, "end": end, "status": "failed", "error": str(exc)})
+        result = await _recognize_file(path)
+        results.append({"start": start, "end": end, **result})
     return results
+
+
+def extract_bgm(video_path: str, output_dir: str) -> dict:
+    output = Path(output_dir)
+    mp3_path = output / "bgm.mp3"
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", video_path, "-vn", "-ac", "2", "-codec:a", "libmp3lame", "-q:a", "2", str(mp3_path)],
+            check=True,
+            capture_output=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("BGM 提取需要系统安装 ffmpeg。") from exc
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError("无法从视频提取 BGM 音频。") from exc
+    try:
+        identification = asyncio.run(_recognize_file(mp3_path))
+    except ImportError:
+        identification = {"status": "unavailable", "error": "请安装 shazamio 以启用音乐识别。"}
+
+    return {
+        "duration": None,
+        "segments": [],
+        "identification": identification,
+        "source_url": identification.get("source_url"),
+        "audio": {"filename": mp3_path.name, "path": str(mp3_path), "format": "mp3"},
+    }
 
 
 def analyze_bgm(video_path: str, output_dir: str) -> dict:
@@ -71,8 +112,8 @@ def analyze_bgm(video_path: str, output_dir: str) -> dict:
         "spectral_centroid": round(float(librosa.feature.spectral_centroid(y=y, sr=sr).mean()), 2),
         "segments": [],
     }
-    bgm_path = output / "bgm.wav"
-    mp3_path = output / "bgm.mp3"
+    bgm_path = output / "bgm-separated.wav"
+    mp3_path = output / "bgm-separated.mp3"
     try:
         from demucs.api import Separator
         separator = Separator(model="htdemucs")
@@ -122,4 +163,6 @@ def analyze_bgm(video_path: str, output_dir: str) -> dict:
 
     matched = next((segment for segment in result["segments"] if segment.get("status") == "matched"), None)
     result["identification"] = matched or {"status": "not_found" if result["segments"] else "unavailable"}
+    if result["identification"].get("source_url"):
+        result["source_url"] = result["identification"]["source_url"]
     return result
