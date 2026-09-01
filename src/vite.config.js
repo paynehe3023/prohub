@@ -37,6 +37,11 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_API_PROXY_TARGET || 'http://localhost:3000',
           changeOrigin: true,
         },
+        '/video-worker': {
+          target: env.VITE_VIDEO_WORKER_PROXY_TARGET || 'http://localhost:8090',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/video-worker/, ''),
+        },
       },
     },
   };

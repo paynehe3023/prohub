@@ -70,6 +70,17 @@ export const tools = [
     keywords: ['自媒体', '小红书', '抖音', '公众号', 'AI润色', 'DeepSeek', '违禁词', '排版预览'],
   },
   {
+    id: 'video-extractor-studio',
+    title: '视频提取工作台',
+    desc: '本地预览视频并提取字幕、语音转录稿和背景音乐',
+    category: '媒体/去水印',
+    icon: 'IconVideo',
+    route: '/tools/video-extractor-studio',
+    status: 'online',
+    isNew: true,
+    keywords: ['视频提取', '字幕提取', '语音转录', 'BGM提取', '视频工具'],
+  },
+  {
     id: 'image-compress',
     title: '全能极速图片处理工作台',
     desc: '纯前端图片压缩、裁剪、水印、格式转换、拼长图与九宫格',

@@ -11,6 +11,21 @@ services:
         limits:
           memory: 4G
 
+  video-worker:
+    build:
+      context: ./video-worker
+      dockerfile: Dockerfile
+    container_name: prohub-video-worker
+    ports:
+      - "8090:8090"
+    environment:
+      - VIDEO_WORKER_DATA=/app/data
+      - VIDEO_WORKER_MAX_UPLOAD_BYTES=2147483648
+      - VIDEO_WORKER_CORS_ORIGINS=http://localhost:3000
+    volumes:
+      - video-worker-data:/app/data
+    restart: unless-stopped
+
   prohub:
     build:
       context: .
@@ -24,6 +39,7 @@ services:
       - CHROME_PATH=/usr/bin/chromium-browser
       - HEADLESS=true
       - REMBG_URL=http://rembg:7000
+      - VIDEO_WORKER_URL=http://video-worker:8090
       - SMTP_HOST=${SMTP_HOST:-smtp.qq.com}
       - SMTP_PORT=${SMTP_PORT:-465}
       - SMTP_SECURE=${SMTP_SECURE:-true}
@@ -36,11 +52,10 @@ services:
     restart: unless-stopped
     depends_on:
       - rembg
+      - video-worker
 
-
-
-
-
+volumes:
+  video-worker-data:
 
 
 

@@ -1,0 +1,17 @@
+fastapi==0.115.6
+pydantic>=2.10,<3
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9
+# OCR（需额外安装系统 Tesseract，并确保 tesseract 在 PATH）
+opencv-python-headless>=4.10
+pytesseract>=0.3.13
+# Whisper 转写（首次使用会下载模型；优先使用 faster-whisper）
+faster-whisper>=1.1.0
+# BGM：音频特征、源分离、音乐识别
+librosa>=0.10.2
+soundfile>=0.12.1
+demucs==4.0.1
+# CPU 镜像使用 PyTorch CPU wheel，GPU 部署请替换为 CUDA 对应版本
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.1+cpu
+shazamio>=0.8.1

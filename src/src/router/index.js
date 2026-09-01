@@ -135,6 +135,16 @@ const routes = [
     },
   },
   {
+    path: '/tools/video-extractor-studio',
+    name: 'VideoExtractorStudio',
+    component: () => import('../views/tools/VideoExtractorStudio.vue'),
+    meta: {
+      title: '视频提取工作台 - proHub',
+      description: '本地预览视频并提取字幕、语音转录稿和背景音乐。',
+      keywords: '视频提取,字幕提取,语音转录,BGM提取,视频工具',
+    },
+  },
+  {
     path: '/pay-merge',
     name: 'PayMerge',
     component: () => import('../views/PayMerge.vue'),

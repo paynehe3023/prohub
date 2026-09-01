@@ -14,6 +14,39 @@ const notificationsRoute = require('./routes/notifications');
 const { registerClipboardRealtime } = require('./realtime/clipboard');
 
 const app = express();
+const videoWorkerUrl = process.env.VIDEO_WORKER_URL || 'http://video-worker:8090';
+
+// Keep multipart uploads and SSE streaming untouched while forwarding them to the local Python worker.
+app.use('/video-worker', (req, res) => {
+  const target = new URL(`${videoWorkerUrl}${req.originalUrl.replace(/^\/video-worker/, '')}`);
+  const transport = target.protocol === 'https:' ? require('https') : http;
+  const headers = { ...req.headers, host: target.host };
+  const proxyRequest = transport.request(target, {
+    method: req.method,
+    headers,
+  }, proxyResponse => {
+    res.status(proxyResponse.statusCode || 502);
+    for (const [key, value] of Object.entries(proxyResponse.headers)) {
+      if (value !== undefined) res.setHeader(key, value);
+    }
+    proxyResponse.pipe(res);
+  });
+
+  proxyRequest.on('error', error => {
+    console.error('[Video Worker Proxy]', error.message);
+    if (!res.headersSent) {
+      res.status(502).json({ error: '视频 Worker 不可用', message: error.message });
+    } else {
+      res.destroy(error);
+    }
+  });
+
+  req.on('aborted', () => proxyRequest.destroy());
+  res.on('close', () => {
+    if (!res.writableEnded) proxyRequest.destroy();
+  });
+  req.pipe(proxyRequest);
+});
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 const trustProxy = /^(1|true|yes)$/i.test(String(process.env.TRUST_PROXY || ''));
