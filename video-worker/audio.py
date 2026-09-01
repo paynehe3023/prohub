@@ -1,5 +1,8 @@
 import asyncio
+import json
 import subprocess
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 
@@ -22,7 +25,7 @@ def _change_points(y, sr: int) -> list[float]:
     return sorted({round(point, 3) for point in points if point > 0})
 
 
-def _track_info(track: dict) -> dict:
+def _track_info(track: dict, source: str = "shazam") -> dict:
     share = track.get("share") or {}
     sections = track.get("sections") or []
     metadata = sections[0].get("metadata") if sections else []
@@ -34,13 +37,14 @@ def _track_info(track: dict) -> dict:
     artist_zh = track.get("artist_zh") or track.get("artist_zh_cn")
     return {
         "status": "matched" if track else "not_found",
+        "source": source,
         "title": track.get("title"),
         "title_zh": title_zh,
-        "artist": track.get("subtitle"),
+        "artist": track.get("subtitle") or track.get("artist"),
         "artist_zh": artist_zh,
-        "album": album,
+        "album": album or track.get("album"),
         "key": track.get("key"),
-        "source_url": share.get("href") or track.get("url"),
+        "source_url": share.get("href") or track.get("url") or track.get("source_url"),
     }
 
 
@@ -61,13 +65,53 @@ def _rename_audio(path: Path, identification: dict) -> Path:
 
 
 async def _recognize_file(path: Path) -> dict:
-    from shazamio import Shazam
-
     try:
+        from shazamio import Shazam
         match = await Shazam().recognize(str(path))
-        return _track_info(match.get("track") or {})
+        shazam = _track_info(match.get("track") or {}, "shazam")
     except Exception as exc:
-        return {"status": "failed", "error": str(exc)}
+        shazam = {"status": "failed", "source": "shazam", "error": str(exc)}
+    if shazam.get("status") != "matched":
+        return shazam
+
+    candidates = [shazam]
+    for source, recognizer in (("netease", _recognize_netease), ("qq", _recognize_qq)):
+        try:
+            match = await recognizer(shazam)
+            if match:
+                candidates.append(_track_info(match, source))
+        except Exception:
+            continue
+    # Prefer domestic search results because they usually contain Chinese metadata.
+    return next((item for item in candidates if item.get("source") == "netease"), next((item for item in candidates if item.get("source") == "qq"), shazam))
+
+
+async def _recognize_netease(query: dict) -> dict | None:
+    params = urllib.parse.urlencode({"s": f'{query.get("title", "")} {query.get("artist", "")}', "type": 1, "limit": 1})
+    payload = await _music_search("https://music.163.com/api/search/get/web?" + params)
+    song = ((payload.get("result") or {}).get("songs") or [None])[0]
+    if not song:
+        return None
+    artists = song.get("artists") or []
+    return {"title": song.get("name"), "artist": "、".join(item.get("name", "") for item in artists), "album": (song.get("album") or {}).get("name"), "source_url": f'https://music.163.com/#/song?id={song.get("id")}' }
+
+
+async def _recognize_qq(query: dict) -> dict | None:
+    params = urllib.parse.urlencode({"w": f'{query.get("title", "")} {query.get("artist", "")}', "format": "json", "n": 1, "p": 1})
+    payload = await _music_search("https://c.y.qq.com/soso/fcgi-bin/client_search_cp?" + params)
+    song = (((payload.get("data") or {}).get("song") or {}).get("list") or [None])[0]
+    if not song:
+        return None
+    artists = song.get("singer") or []
+    return {"title": song.get("songname"), "artist": "、".join(item.get("name", "") for item in artists), "album": song.get("albumname"), "source_url": f'https://y.qq.com/n/ryqq/song/{song.get("songmid")}' }
+
+
+async def _music_search(url: str) -> dict:
+    def request() -> dict:
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(request, timeout=8) as response:
+            return json.loads(response.read().decode("utf-8-sig"))
+    return await asyncio.to_thread(request)
 
 
 async def _recognize_segments(segment_paths: list[tuple[float, float, Path]]) -> list[dict]:

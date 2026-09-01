@@ -83,13 +83,15 @@
             <div class="flex items-center gap-2"><span class="w-7 h-7 rounded-lg bg-ios-blue/15 text-ios-blue flex items-center justify-center"><component :is="iconFor(result.kind)" class="w-4 h-4" /></span><div class="min-w-0 flex-1"><p class="text-sm text-white">{{ result.title }}</p><p class="text-[0.6875rem] text-zinc-500">{{ result.meta }}</p></div><span class="text-[0.6875rem] text-ios-green">已完成</span></div>
             <div v-if="result.kind === 'bgm' || result.kind === 'bgm_separation'" class="rounded-xl bg-black/15 p-3 space-y-2">
               <p class="text-sm text-white truncate">{{ displayTrackTitle(result.track) }}</p>
-              <p v-if="result.track?.artist" class="text-xs text-zinc-400">作者：{{ result.track.artist }}</p>
+              <p v-if="result.track?.artist || result.track?.artist_zh" class="text-xs text-zinc-400">作者：{{ result.track.artist_zh || result.track.artist }}</p>
               <p v-if="result.track?.album" class="text-xs text-zinc-500">专辑：{{ result.track.album }}</p>
               <p v-if="result.track?.status === 'matched' && !result.track?.title_zh" class="text-[0.6875rem] text-zinc-500">未获取到官方中文名称，显示原始识别名称。</p>
-              <div class="flex flex-wrap gap-3 text-xs"><a v-if="result.sourceUrl" :href="result.sourceUrl" target="_blank" rel="noreferrer" class="text-ios-blue hover:underline">打开歌曲源链接</a></div>
+              <div class="flex flex-wrap gap-2 text-xs">
+                <a v-if="result.sourceUrl" :href="result.sourceUrl" target="_blank" rel="noreferrer" class="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition-colors" :class="sourceButtonClass(result.track)"><span class="w-5 h-5 rounded-full flex items-center justify-center text-[0.65rem] font-bold" :class="sourceIconClass(result.track)">{{ sourceIcon(result.track) }}</span>{{ displayTrackSource(result.track) }}</a>
+              </div>
             </div>
             <pre v-if="result.content" class="max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs text-zinc-300 leading-relaxed">{{ result.content }}</pre>
-            <div class="flex gap-2"><button type="button" class="rounded-xl bg-ios-blue/20 text-ios-blue px-3 py-2 text-xs hover:bg-ios-blue/30" @click="downloadResult(result)"><IconDownload class="w-3.5 h-3.5 inline mr-1" />下载</button><button v-if="result.content" type="button" class="rounded-xl liquid-glass-inset text-zinc-300 px-3 py-2 text-xs hover:text-white" @click="copyResult(result)"><IconCopy class="w-3.5 h-3.5 inline mr-1" />复制</button></div>
+            <div class="flex gap-2"><button type="button" class="inline-flex items-center gap-1.5 rounded-xl border border-ios-blue/50 bg-ios-blue/10 text-ios-blue px-3 py-2 text-xs transition-colors hover:bg-ios-blue/20" @click="downloadResult(result)"><IconDownload class="w-3.5 h-3.5 text-ios-blue" />下载</button><button v-if="result.content" type="button" class="rounded-xl liquid-glass-inset text-zinc-300 px-3 py-2 text-xs hover:text-white" @click="copyResult(result)"><IconCopy class="w-3.5 h-3.5 inline mr-1" />复制</button></div>
           </article>
         </section>
       </aside>
@@ -106,7 +108,7 @@ type TaskId = 'subtitle' | 'transcript' | 'bgm' | 'bgm_separation';
 type ResultKind = TaskId;
 interface Task { id: TaskId; label: string; description: string; icon: unknown }
 interface LogEntry { time: string; message: string; type?: 'info' | 'success' | 'error' }
-interface TrackInfo { title?: string; title_zh?: string; artist?: string; album?: string; source_url?: string; status?: string }
+interface TrackInfo { title?: string; title_zh?: string; artist?: string; artist_zh?: string; album?: string; source?: 'netease' | 'qq' | 'shazam'; source_url?: string; status?: string }
 interface ExtractionResult { id: string; kind: ResultKind; title: string; meta: string; content: string; url?: string; filename?: string; track?: TrackInfo; sourceUrl?: string }
 interface WorkerResult { kind?: ResultKind; type?: ResultKind; title?: string; content?: string; text?: string; data?: string; url?: string; meta?: string; filename?: string; format?: string; audio?: { url?: string; filename?: string; format?: string }; segments?: unknown[]; srt?: string; subtitles?: WorkerResult; transcript?: WorkerResult; bgm?: WorkerResult; bgm_separation?: WorkerResult; identification?: TrackInfo; track?: TrackInfo; source_url?: string }
 interface WorkerEvent { type?: string; progress?: number; message?: string; task?: TaskId; done?: boolean; status?: string; result?: WorkerResult | WorkerResult[]; results?: WorkerResult[]; output?: WorkerResult | WorkerResult[]; subtitle_srt?: string; srt?: string; transcript?: string; bgm_segments?: unknown[] }
@@ -149,6 +151,10 @@ function onPreviewError() { previewError.value = true; videoMeta.value = '无法
 function toggleAll() { selectedTasks.value = allSelected.value ? [] : tasks.map(task => task.id); }
 function iconFor(kind: ResultKind) { return kind === 'bgm' || kind === 'bgm_separation' ? IconVideo : IconFileText; }
 function displayTrackTitle(track?: TrackInfo) { return track?.title_zh || track?.title || '暂未识别歌曲名称'; }
+function displayTrackSource(track?: TrackInfo) { return track?.source === 'netease' ? '网易云音乐' : track?.source === 'qq' ? 'QQ音乐' : track?.source === 'shazam' ? 'Shazam' : '歌曲源'; }
+function sourceIcon(track?: TrackInfo) { return track?.source === 'netease' ? '网' : track?.source === 'qq' ? 'Q' : 'S'; }
+function sourceIconClass(track?: TrackInfo) { return track?.source === 'netease' ? 'bg-red-500 text-white' : track?.source === 'qq' ? 'bg-green-500 text-white' : 'bg-ios-blue text-white'; }
+function sourceButtonClass(track?: TrackInfo) { return track?.source === 'netease' ? 'border-red-500/50 bg-red-500/10 text-red-200 hover:bg-red-500/20' : track?.source === 'qq' ? 'border-green-500/50 bg-green-500/10 text-green-200 hover:bg-green-500/20' : 'border-ios-blue/50 bg-ios-blue/10 text-ios-blue hover:bg-ios-blue/20'; }
 
 function startExtraction() { if (!videoFile.value || !selectedTasks.value.length) return; processing.value = true; progress.value = 0; results.value = []; addLog(`已载入「${videoFile.value.name}」，准备处理 ${selectedTasks.value.length} 项任务`); void createJob(); }
 async function createJob() {
