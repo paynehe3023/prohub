@@ -22,8 +22,10 @@ services:
       - VIDEO_WORKER_DATA=/app/data
       - VIDEO_WORKER_MAX_UPLOAD_BYTES=2147483648
       - VIDEO_WORKER_CORS_ORIGINS=http://localhost:3000
+      - WHISPER_MODEL_DIR=/models/faster-whisper
     volumes:
       - video-worker-data:/app/data
+      - ./models/faster-whisper:/models/faster-whisper:ro
     restart: unless-stopped
 
   prohub:

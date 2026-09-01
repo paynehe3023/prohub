@@ -61,11 +61,12 @@ def analyze_bgm(video_path: str, output_dir: str) -> dict:
 
     y, sr = librosa.load(str(wav_path), sr=None, mono=True)
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    tempo_value = float(tempo[0]) if hasattr(tempo, "__len__") else float(tempo)
     duration = float(len(y) / sr) if sr else 0.0
     result = {
         "duration": round(duration, 2),
         "sample_rate": sr,
-        "tempo": round(float(tempo), 2),
+        "tempo": round(tempo_value, 2),
         "rms": round(float(librosa.feature.rms(y=y).mean()), 6),
         "spectral_centroid": round(float(librosa.feature.spectral_centroid(y=y, sr=sr).mean()), 2),
         "segments": [],

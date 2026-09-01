@@ -116,6 +116,7 @@ const workerUrl = ref((import.meta.env.VITE_VIDEO_WORKER_URL || '/video-worker')
 const sseState = ref<'idle' | 'connected' | 'closed'>('idle');
 let eventSource: EventSource | null = null;
 let activeJobId = '';
+let reconnectTimer: number | null = null;
 let demoTimer: number | null = null;
 
 const allSelected = computed(() => selectedTasks.value.length === tasks.length);
@@ -155,8 +156,54 @@ async function createJob() {
     addLog(`任务提交失败：${error instanceof Error ? error.message : '未知错误'}`, 'error');
   }
 }
-function connectSse(endpoint: string) { sseState.value = 'connected'; addLog('正在连接 SSE 进度流…'); eventSource?.close(); eventSource = new EventSource(endpoint); eventSource.onmessage = event => { try { handleWorkerEvent(JSON.parse(event.data) as WorkerEvent); } catch { addLog(event.data); } }; eventSource.onerror = () => { if (!processing.value) return; addLog('SSE 连接异常，请检查 Worker 服务', 'error'); eventSource?.close(); eventSource = null; sseState.value = 'closed'; processing.value = false; statusMessage.value = '实时进度连接失败'; }; }
-function handleWorkerEvent(data: WorkerEvent) { progress.value = Math.min(100, Math.max(progress.value, data.progress ?? progress.value)); if (data.message) addLog(data.message); const incoming = data.results || data.result || data.output; if (incoming) applyWorkerResults(incoming); const directResults: WorkerResult[] = []; if (data.subtitle_srt || data.srt) directResults.push({ kind: 'subtitle', content: data.subtitle_srt || data.srt }); if (data.transcript) directResults.push({ kind: 'transcript', content: data.transcript }); if (data.bgm_segments) directResults.push({ kind: 'bgm', title: 'BGM segments', meta: 'JSON · 音频片段', content: JSON.stringify(data.bgm_segments, null, 2) }); if (directResults.length) applyWorkerResults(directResults); if (data.done || ['completed', 'complete', 'finished', 'success'].includes((data.status || '').toLowerCase())) finishExtraction(false); }
+function connectSse(endpoint: string) {
+  sseState.value = 'connected';
+  addLog('正在连接 SSE 进度流…');
+  eventSource?.close();
+  eventSource = new EventSource(endpoint);
+  const handleSseMessage = (event: MessageEvent) => {
+    try {
+      handleWorkerEvent(JSON.parse(event.data) as WorkerEvent);
+    } catch {
+      addLog(event.data);
+    }
+  };
+  eventSource.addEventListener('progress', handleSseMessage);
+  eventSource.onerror = () => {
+    if (!processing.value || !activeJobId) return;
+    eventSource?.close();
+    eventSource = null;
+    sseState.value = 'closed';
+    addLog('SSE 暂时断开，正在查询任务状态…', 'info');
+    void recoverJob(endpoint);
+  };
+}
+
+async function recoverJob(endpoint: string) {
+  const baseUrl = workerUrl.value.trim().replace(/\/$/, '');
+  try {
+    const response = await fetch(`${baseUrl}/jobs/${encodeURIComponent(activeJobId)}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const job = await response.json() as { status?: string; progress?: number; result?: WorkerResult | WorkerResult[]; error?: string };
+    handleWorkerEvent({ progress: job.progress, result: job.result, status: job.status, message: job.status === 'processing' ? '任务仍在后台处理中…' : undefined });
+    if (job.status === 'failed') {
+      processing.value = false;
+      statusMessage.value = job.error || 'Worker 处理失败';
+      addLog(`Worker 处理失败：${job.error || '未知错误'}`, 'error');
+      return;
+    }
+    if (job.status === 'completed') {
+      finishExtraction(false);
+      return;
+    }
+    reconnectTimer = window.setTimeout(() => connectSse(endpoint), 1000);
+  } catch (error) {
+    addLog(`任务状态查询失败：${error instanceof Error ? error.message : '未知错误'}`, 'error');
+    reconnectTimer = window.setTimeout(() => recoverJob(endpoint), 2000);
+  }
+}
+
+function handleWorkerEvent(data: WorkerEvent) { if (data.type === 'heartbeat') return; progress.value = Math.min(100, Math.max(progress.value, data.progress ?? progress.value)); if (data.message) addLog(data.message); const incoming = data.results || data.result || data.output; if (incoming) applyWorkerResults(incoming); const directResults: WorkerResult[] = []; if (data.subtitle_srt || data.srt) directResults.push({ kind: 'subtitle', content: data.subtitle_srt || data.srt }); if (data.transcript) directResults.push({ kind: 'transcript', content: data.transcript }); if (data.bgm_segments) directResults.push({ kind: 'bgm', title: 'BGM segments', meta: 'JSON · 音频片段', content: JSON.stringify(data.bgm_segments, null, 2) }); if (directResults.length) applyWorkerResults(directResults); if (data.done || ['completed', 'complete', 'finished', 'success'].includes((data.status || '').toLowerCase())) finishExtraction(false); }
 function formatWorkerContent(kind: ResultKind, item: WorkerResult) {
   if (kind === 'subtitle') return item.srt || item.content || item.text || '';
   if (kind === 'transcript') return item.segments ? JSON.stringify(item.segments, null, 2) : item.text || item.content || '';
@@ -182,6 +229,6 @@ function finishExtraction(useDemoResults = false) { eventSource?.close(); eventS
 function resolveWorkerUrl(url: string) { return url.startsWith('http') ? url : `${workerUrl.value.replace(/\/$/, '')}/${url.replace(/^\//, '')}`; }
 function downloadResult(result: ExtractionResult) { const extension = result.kind === 'subtitle' ? 'srt' : result.kind === 'bgm' ? 'mp3' : 'txt'; if (result.url) { const link = document.createElement('a'); link.href = resolveWorkerUrl(result.url); link.download = result.filename || `${videoFile.value?.name.replace(/\.[^.]+$/, '') || 'video'}-${result.kind}.${extension}`; link.target = '_blank'; link.click(); return; } if (result.kind === 'bgm') { statusMessage.value = 'BGM 音频地址不可用，请检查 Worker 输出'; return; } const blob = new Blob([result.content], { type: 'text/plain;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${videoFile.value?.name.replace(/\.[^.]+$/, '') || 'video'}-${result.kind}.${extension}`; link.click(); URL.revokeObjectURL(link.href); }
 async function copyResult(result: ExtractionResult) { await navigator.clipboard?.writeText(result.content); statusMessage.value = '结果已复制到剪贴板'; }
-function reset() { eventSource?.close(); eventSource = null; if (demoTimer) window.clearInterval(demoTimer); demoTimer = null; activeJobId = ''; if (videoUrl.value) URL.revokeObjectURL(videoUrl.value); videoFile.value = null; videoUrl.value = ''; videoMeta.value = '等待读取时长'; results.value = []; logs.value = []; progress.value = 0; processing.value = false; statusMessage.value = ''; sseState.value = 'idle'; }
+function reset() { eventSource?.close(); eventSource = null; if (reconnectTimer) window.clearTimeout(reconnectTimer); reconnectTimer = null; if (demoTimer) window.clearInterval(demoTimer); demoTimer = null; activeJobId = ''; if (videoUrl.value) URL.revokeObjectURL(videoUrl.value); videoFile.value = null; videoUrl.value = ''; videoMeta.value = '等待读取时长'; results.value = []; logs.value = []; progress.value = 0; processing.value = false; statusMessage.value = ''; sseState.value = 'idle'; }
 onBeforeUnmount(reset);
 </script>

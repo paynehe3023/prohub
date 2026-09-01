@@ -1,15 +1,26 @@
+import os
+from pathlib import Path
 from typing import Any
+
+
+def _resolve_model_name(model_name: str) -> str:
+    model_dir = os.getenv("WHISPER_MODEL_DIR", "").strip()
+    if not model_dir or Path(model_name).is_absolute():
+        return model_name
+    local_model = Path(model_dir) / model_name
+    return str(local_model) if local_model.exists() else model_name
 
 
 def _transcribe_faster(video_path: str, model_name: str) -> dict[str, Any]:
     from faster_whisper import WhisperModel
 
+    resolved_model = _resolve_model_name(model_name)
     try:
-        model = WhisperModel(model_name, device="cuda", compute_type="float16")
+        model = WhisperModel(resolved_model, device="cuda", compute_type="float16")
         segments, info = model.transcribe(video_path)
         backend = "faster-whisper-cuda"
     except Exception:
-        model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        model = WhisperModel(resolved_model, device="cpu", compute_type="int8")
         segments, info = model.transcribe(video_path)
         backend = "faster-whisper-cpu"
     normalized = [

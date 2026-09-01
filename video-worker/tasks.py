@@ -64,9 +64,12 @@ class JobManager:
         try:
             yield job.public()
             while job.status not in {"completed", "failed"}:
-                yield await queue.get()
-            if job.status in {"completed", "failed"}:
-                yield job.public()
+                try:
+                    yield await asyncio.wait_for(queue.get(), timeout=15)
+                except asyncio.TimeoutError:
+                    # Keep proxies and browsers from treating an idle SSE stream as dead.
+                    yield {"type": "heartbeat", "status": job.status}
+            yield job.public()
         finally:
             subscribers = self.events.get(job_id)
             if subscribers and queue in subscribers:
