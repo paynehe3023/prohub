@@ -5,7 +5,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 
@@ -18,6 +18,8 @@ except ImportError:
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = Path(os.getenv("VIDEO_WORKER_DATA", BASE_DIR / "data"))
+UPLOAD_STAGING_DIR = Path(os.getenv("VIDEO_WORKER_UPLOAD_STAGING", UPLOAD_DIR / "staging"))
+UPLOAD_STAGING_DIR.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = int(os.getenv("VIDEO_WORKER_MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
 manager = JobManager(str(UPLOAD_DIR))
 app = FastAPI(title="ProHub Video Worker", version="1.0.0")
@@ -28,6 +30,30 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "video-worker"}
+
+
+@app.post("/uploads/complete", status_code=202)
+async def complete_upload(payload: dict = Body(...)) -> dict:
+    source_path = Path(str(payload.get("file_path", ""))).resolve()
+    shared_root = UPLOAD_STAGING_DIR.resolve()
+    if shared_root not in source_path.parents or not source_path.is_file():
+        raise HTTPException(400, "上传文件不存在或尚未完成。")
+    filename = str(payload.get("filename") or source_path.name)
+    requested_tasks = payload.get("tasks", [])
+    if not isinstance(requested_tasks, list):
+        raise HTTPException(400, "tasks 必须是 JSON 数组。")
+    selected_tasks = {task for task in requested_tasks if task in {"subtitle", "transcript", "bgm", "bgm_separation"}}
+    if not selected_tasks:
+        raise HTTPException(400, "至少选择一个有效任务。")
+    job_id = uuid.uuid4().hex
+    job_dir = UPLOAD_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    video_path = job_dir / f"input{source_path.suffix.lower() or '.mp4'}"
+    shutil.move(str(source_path), video_path)
+    job = Job(id=job_id, video_path=str(video_path), filename=filename)
+    manager.create(job)
+    asyncio.create_task(manager.run(job, str(payload.get("whisper_model") or "small"), selected_tasks))
+    return job.public()
 
 
 @app.post("/jobs", status_code=202)

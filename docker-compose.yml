@@ -23,8 +23,10 @@ services:
       - VIDEO_WORKER_MAX_UPLOAD_BYTES=2147483648
       - VIDEO_WORKER_CORS_ORIGINS=http://localhost:3000
       - WHISPER_MODEL_DIR=/models/faster-whisper
+      - VIDEO_WORKER_UPLOAD_STAGING=/app/upload-staging
     volumes:
       - video-worker-data:/app/data
+      - video-upload-staging:/app/upload-staging
       - ./models/faster-whisper:/models/faster-whisper:ro
     restart: unless-stopped
 
@@ -42,6 +44,7 @@ services:
       - HEADLESS=true
       - REMBG_URL=http://rembg:7000
       - VIDEO_WORKER_URL=http://video-worker:8090
+      - VIDEO_UPLOAD_DIR=/app/upload-staging
       - SMTP_HOST=${SMTP_HOST:-smtp.qq.com}
       - SMTP_PORT=${SMTP_PORT:-465}
       - SMTP_SECURE=${SMTP_SECURE:-true}
@@ -55,9 +58,12 @@ services:
     depends_on:
       - rembg
       - video-worker
+    volumes:
+      - video-upload-staging:/app/upload-staging
 
 volumes:
   video-worker-data:
+  video-upload-staging:
 
 
 

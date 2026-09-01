@@ -4,6 +4,9 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const http = require('http');
+const crypto = require('crypto');
+const fs = require('fs');
+
 const parseRoute = require('./routes/parse');
 const removeBgRoute = require('./routes/remove-bg');
 const wallpapersRoute = require('./routes/wallpapers');
@@ -15,6 +18,48 @@ const { registerClipboardRealtime } = require('./realtime/clipboard');
 
 const app = express();
 const videoWorkerUrl = process.env.VIDEO_WORKER_URL || 'http://video-worker:8090';
+const uploadDir = process.env.VIDEO_UPLOAD_DIR || path.join(__dirname, 'uploads');
+fs.mkdirSync(uploadDir, { recursive: true });
+const uploadSessions = new Map();
+const uploadChunkLimit = 8 * 1024 * 1024;
+
+app.post('/video-upload/sessions', express.json({ limit: '1mb' }), (req, res) => {
+  const { filename, size, type } = req.body || {};
+  if (!filename || !Number.isFinite(size) || size < 1) return res.status(400).json({ error: '无效的视频文件信息' });
+  const id = crypto.randomUUID();
+  const filePath = path.join(uploadDir, id + path.extname(filename).toLowerCase());
+  fs.closeSync(fs.openSync(filePath, 'w'));
+  uploadSessions.set(id, { filename, size, type: type || 'video/mp4', filePath, received: 0 });
+  res.status(201).json({ upload_id: id, chunk_size: uploadChunkLimit });
+});
+
+app.put('/video-upload/sessions/:id/chunks/:index', (req, res) => {
+  const session = uploadSessions.get(req.params.id);
+  const index = Number(req.params.index);
+  if (!session || !Number.isInteger(index) || index < 0) return res.status(404).json({ error: '上传会话不存在' });
+  const start = Number(req.headers['x-chunk-start']);
+  const length = Number(req.headers['x-chunk-length']);
+  if (!Number.isInteger(start) || !Number.isInteger(length) || length < 1 || length > uploadChunkLimit || start + length > session.size) return res.status(400).json({ error: '分片参数无效' });
+  const output = fs.createWriteStream(session.filePath, { flags: 'r+', start });
+  req.pipe(output);
+  output.on('finish', () => { session.received += length; res.json({ received: session.received }); });
+  output.on('error', error => res.status(500).json({ error: error.message }));
+});
+
+app.post('/video-upload/sessions/:id/complete', express.json({ limit: '1mb' }), async (req, res) => {
+  const session = uploadSessions.get(req.params.id);
+  if (!session || session.received < session.size) return res.status(400).json({ error: '视频分片尚未上传完整' });
+  const body = JSON.stringify({ filename: session.filename, file_path: session.filePath, tasks: req.body?.tasks || [], whisper_model: req.body?.whisper_model || 'small' });
+  const target = new URL(`${videoWorkerUrl}/uploads/complete`);
+  const proxyRequest = http.request(target, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } }, workerResponse => {
+    res.status(workerResponse.statusCode || 502);
+    workerResponse.pipe(res);
+    workerResponse.on('end', () => { if ((workerResponse.statusCode || 500) < 300) { try { fs.unlinkSync(session.filePath); } catch {} uploadSessions.delete(req.params.id); } });
+  });
+  proxyRequest.on('error', error => res.status(502).json({ error: '视频 Worker 不可用', message: error.message }));
+  proxyRequest.write(body);
+  proxyRequest.end();
+});
 
 // Keep multipart uploads and SSE streaming untouched while forwarding them to the local Python worker.
 app.use('/video-worker', (req, res) => {

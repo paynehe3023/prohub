@@ -115,8 +115,9 @@ const tasks: Task[] = [
 const videoFile = ref<File | null>(null);
 const videoUrl = ref('');
 const videoMeta = ref('等待读取时长');
+const previewError = ref(false);
 const dragging = ref(false);
-const selectedTasks = ref<TaskId[]>(['subtitle', 'transcript']);
+const selectedTasks = ref<TaskId[]>([]);
 const results = ref<ExtractionResult[]>([]);
 const logs = ref<LogEntry[]>([]);
 const processing = ref(false);
@@ -136,27 +137,39 @@ const sseStateLabel = computed(() => ({ idle: '未连接', connected: '已连接
 function formatBytes(bytes: number) { if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1024 ** 2).toFixed(1)} MB`; }
 function stamp() { return new Date().toLocaleTimeString('zh-CN', { hour12: false }); }
 function addLog(message: string, type: LogEntry['type'] = 'info') { logs.value.push({ time: stamp(), message, type }); nextTick(() => { const panel = document.querySelector('.font-mono'); if (panel) panel.scrollTop = panel.scrollHeight; }); }
-function acceptFile(file?: File) { if (!file || (!file.type.startsWith('video/') && !/\.(mkv|mov|mp4|webm)$/i.test(file.name))) { statusMessage.value = '请选择有效的视频文件'; return; } if (videoUrl.value) URL.revokeObjectURL(videoUrl.value); videoFile.value = file; videoUrl.value = URL.createObjectURL(file); videoMeta.value = '正在读取元数据'; results.value = []; logs.value = []; statusMessage.value = ''; }
+function acceptFile(file?: File) { if (!file || (!file.type.startsWith('video/') && !/\.(mkv|mov|mp4|webm)$/i.test(file.name))) { statusMessage.value = '请选择有效的视频文件'; return; } if (videoUrl.value) URL.revokeObjectURL(videoUrl.value); videoFile.value = file; videoUrl.value = URL.createObjectURL(file); previewError.value = false; videoMeta.value = '正在读取元数据'; results.value = []; logs.value = []; statusMessage.value = ''; }
 function onFileChange(event: Event) { acceptFile((event.target as HTMLInputElement).files?.[0]); }
 function onDrop(event: DragEvent) { dragging.value = false; acceptFile(event.dataTransfer?.files?.[0]); }
 function onMetadata(event: Event) { const video = event.target as HTMLVideoElement; videoMeta.value = `${Math.floor(video.duration / 60)}:${String(Math.floor(video.duration % 60)).padStart(2, '0')} · ${video.videoWidth} × ${video.videoHeight}`; }
+function onPreviewError() { previewError.value = true; videoMeta.value = '无法预览当前视频编码'; }
 function toggleAll() { selectedTasks.value = allSelected.value ? [] : tasks.map(task => task.id); }
 function iconFor(kind: ResultKind) { return kind === 'bgm' || kind === 'bgm_separation' ? IconFileMusic : IconFileText; }
-function makeResult(kind: TaskId): ExtractionResult { const labels = { subtitle: '字幕文件', transcript: '转录文本', bgm: '背景音乐', bgm_separation: '人声/BGM 分离' }; const content = kind === 'subtitle' ? '1\n00:00:00,000 --> 00:00:04,000\n（演示字幕）视频处理完成后将替换为识别结果。' : kind === 'transcript' ? '（演示转录）视频处理完成后将替换为识别结果。' : 'BGM 音频已准备下载。'; return { id: `${kind}-${Date.now()}`, kind, title: labels[kind], meta: kind === 'bgm' || kind === 'bgm_separation' ? 'MP3 · 音频轨道' : kind === 'subtitle' ? 'SRT · UTF-8' : 'TXT · UTF-8', content }; }
+function makeResult(kind: TaskId): ExtractionResult { const labels: Record<TaskId, string> = { subtitle: '字幕文件', transcript: '转录文本', bgm: '背景音乐', bgm_separation: '人声/BGM 分离' }; const content = kind === 'subtitle' ? '1\n00:00:00,000 --> 00:00:04,000\n（演示字幕）视频处理完成后将替换为识别结果。' : kind === 'transcript' ? '（演示转录）视频处理完成后将替换为识别结果。' : 'BGM 音频已准备下载。'; return { id: `${kind}-${Date.now()}`, kind, title: labels[kind], meta: kind === 'bgm' || kind === 'bgm_separation' ? 'MP3 · 音频轨道' : kind === 'subtitle' ? 'SRT · UTF-8' : 'TXT · UTF-8', content }; }
 interface WorkerResult { kind?: ResultKind; type?: ResultKind; title?: string; content?: string; text?: string; data?: string; url?: string; meta?: string; filename?: string; format?: string; audio?: { url?: string; filename?: string; format?: string }; audio_url?: string; audio_filename?: string; segments?: unknown[]; srt?: string; subtitles?: WorkerResult; transcript?: WorkerResult; bgm?: WorkerResult; bgm_separation?: WorkerResult; identification?: TrackInfo; track?: TrackInfo; source_url?: string }
 interface WorkerEvent { progress?: number; message?: string; task?: TaskId; done?: boolean; status?: string; result?: WorkerResult | WorkerResult[]; results?: WorkerResult[]; output?: WorkerResult | WorkerResult[]; subtitle_srt?: string; srt?: string; transcript?: string; bgm_segments?: unknown[] }
 
 function startExtraction() { if (!videoFile.value) return; processing.value = true; progress.value = 0; results.value = []; addLog(`已载入「${videoFile.value.name}」，准备处理 ${selectedTasks.value.length} 项任务`); if (workerUrl.value.trim()) createJob(); else { addLog('未配置 Worker 地址，进入本地演示模式', 'info'); runDemoProgress(); } }
 async function createJob() {
   const baseUrl = workerUrl.value.trim().replace(/\/$/, '');
-  const formData = new FormData();
-  formData.append('video', videoFile.value as File);
-  formData.append('tasks', JSON.stringify(selectedTasks.value));
   try {
-    addLog(`正在提交任务至 ${baseUrl}/jobs…`);
-    const response = await fetch(`${baseUrl}/jobs`, { method: 'POST', body: formData });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const job = await response.json() as { id?: string; job_id?: string; jobId?: string };
+    const file = videoFile.value as File;
+    const sessionResponse = await fetch('/video-upload/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: file.name, size: file.size, type: file.type }) });
+    if (!sessionResponse.ok) throw new Error(`上传会话 HTTP ${sessionResponse.status}`);
+    const session = await sessionResponse.json() as { upload_id: string; chunk_size: number };
+    const chunkSize = session.chunk_size || 8 * 1024 * 1024;
+    const total = Math.ceil(file.size / chunkSize);
+    for (let index = 0; index < total; index += 1) {
+      const start = index * chunkSize;
+      const chunk = file.slice(start, Math.min(file.size, start + chunkSize));
+      addLog(`正在上传分片 ${index + 1}/${total}…`);
+      const response = await fetch(`/video-upload/sessions/${encodeURIComponent(session.upload_id)}/chunks/${index}`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream', 'X-Chunk-Start': String(start), 'X-Chunk-Length': String(chunk.size) }, body: chunk });
+      if (!response.ok) throw new Error(`分片 ${index + 1} HTTP ${response.status}`);
+      progress.value = Math.floor(((index + 1) / total) * 45);
+    }
+    addLog('视频上传完成，正在创建处理任务…');
+    const completeResponse = await fetch(`/video-upload/sessions/${encodeURIComponent(session.upload_id)}/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: selectedTasks.value }) });
+    if (!completeResponse.ok) throw new Error(`任务创建 HTTP ${completeResponse.status}`);
+    const job = await completeResponse.json() as { id?: string; job_id?: string; jobId?: string };
     activeJobId = job.id || job.job_id || job.jobId || '';
     if (!activeJobId) throw new Error('服务端未返回任务 ID');
     connectSse(`${baseUrl}/jobs/${encodeURIComponent(activeJobId)}/events`);
@@ -213,7 +226,7 @@ async function recoverJob(endpoint: string) {
   }
 }
 
-function handleWorkerEvent(data: WorkerEvent) { if (data.type === 'heartbeat') return; progress.value = Math.min(100, Math.max(progress.value, data.progress ?? progress.value)); if (data.message) addLog(data.message); const incoming = data.results || data.result || data.output; if (incoming) applyWorkerResults(incoming); const directResults: WorkerResult[] = []; if (data.subtitle_srt || data.srt) directResults.push({ kind: 'subtitle', content: data.subtitle_srt || data.srt }); if (data.transcript) directResults.push({ kind: 'transcript', content: data.transcript }); if (data.bgm_segments) directResults.push({ kind: 'bgm', title: 'BGM segments', meta: 'JSON · 音频片段', content: JSON.stringify(data.bgm_segments, null, 2) }); if (directResults.length) applyWorkerResults(directResults); if (data.done || ['completed', 'complete', 'finished', 'success'].includes((data.status || '').toLowerCase())) finishExtraction(false); }
+function handleWorkerEvent(data: WorkerEvent) { if ('type' in data && data.type === 'heartbeat') return; progress.value = Math.min(100, Math.max(progress.value, data.progress ?? progress.value)); if (data.message) addLog(data.message); const incoming = data.results || data.result || data.output; if (incoming) applyWorkerResults(incoming); const directResults: WorkerResult[] = []; if (data.subtitle_srt || data.srt) directResults.push({ kind: 'subtitle', content: data.subtitle_srt || data.srt }); if (data.transcript) directResults.push({ kind: 'transcript', content: data.transcript }); if (data.bgm_segments) directResults.push({ kind: 'bgm', title: 'BGM segments', meta: 'JSON · 音频片段', content: JSON.stringify(data.bgm_segments, null, 2) }); if (directResults.length) applyWorkerResults(directResults); if (data.done || ['completed', 'complete', 'finished', 'success'].includes((data.status || '').toLowerCase())) finishExtraction(false); }
 function formatWorkerContent(kind: ResultKind, item: WorkerResult) {
   if (kind === 'subtitle') return item.srt || item.content || item.text || '';
   if (kind === 'transcript') return item.segments ? JSON.stringify(item.segments, null, 2) : item.text || item.content || '';
@@ -241,6 +254,6 @@ function finishExtraction(useDemoResults = false) { eventSource?.close(); eventS
 function resolveWorkerUrl(url: string) { return url.startsWith('http') ? url : `${workerUrl.value.replace(/\/$/, '')}/${url.replace(/^\//, '')}`; }
 function downloadResult(result: ExtractionResult) { const extension = result.kind === 'subtitle' ? 'srt' : result.kind === 'bgm' || result.kind === 'bgm_separation' ? 'mp3' : 'txt'; if (result.url) { const link = document.createElement('a'); link.href = resolveWorkerUrl(result.url); link.download = result.filename || `${videoFile.value?.name.replace(/\.[^.]+$/, '') || 'video'}-${result.kind}.${extension}`; link.target = '_blank'; link.click(); return; } if (result.kind === 'bgm') { statusMessage.value = 'BGM 音频地址不可用，请检查 Worker 输出'; return; } const blob = new Blob([result.content], { type: 'text/plain;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${videoFile.value?.name.replace(/\.[^.]+$/, '') || 'video'}-${result.kind}.${extension}`; link.click(); URL.revokeObjectURL(link.href); }
 async function copyResult(result: ExtractionResult) { await navigator.clipboard?.writeText(result.content); statusMessage.value = '结果已复制到剪贴板'; }
-function reset() { eventSource?.close(); eventSource = null; if (reconnectTimer) window.clearTimeout(reconnectTimer); reconnectTimer = null; if (demoTimer) window.clearInterval(demoTimer); demoTimer = null; activeJobId = ''; if (videoUrl.value) URL.revokeObjectURL(videoUrl.value); videoFile.value = null; videoUrl.value = ''; videoMeta.value = '等待读取时长'; results.value = []; logs.value = []; progress.value = 0; processing.value = false; statusMessage.value = ''; sseState.value = 'idle'; }
+function reset() { eventSource?.close(); eventSource = null; if (reconnectTimer) window.clearTimeout(reconnectTimer); reconnectTimer = null; if (demoTimer) window.clearInterval(demoTimer); demoTimer = null; activeJobId = ''; if (videoUrl.value) URL.revokeObjectURL(videoUrl.value); videoFile.value = null; videoUrl.value = ''; videoMeta.value = '等待读取时长'; previewError.value = false; results.value = []; logs.value = []; progress.value = 0; processing.value = false; statusMessage.value = ''; sseState.value = 'idle'; }
 onBeforeUnmount(reset);
 </script>
