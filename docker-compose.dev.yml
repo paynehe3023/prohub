@@ -34,10 +34,19 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       FEEDBACK_FROM: ${FEEDBACK_FROM:-}
+      # ---- 测试隔离：CORS 白名单 ----
+      TRUSTED_CORS_ORIGINS: "http://localhost:5173,http://localhost:3001"
+      # ---- 测试隔离：通知数据文件独立路径 ----
+      NOTIFICATIONS_FILE: "/app/server/data-dev/notifications.json"
+      # ---- 测试隔离：上传目录独立路径 ----
+      VIDEO_UPLOAD_DIR: "/app/server/uploads-dev"
+      # ---- 测试隔离：管理员账号 ----
+      ADMIN_USERNAME: "admin"
+      ADMIN_PASSWORD: "test-only-pwd"
     volumes:
       - ./server:/app/server
       - prohub_server_node_modules:/app/server/node_modules
-    command: ["node", "--watch", "index.js"]
+    command: ["node", "index.js"]
     restart: unless-stopped
     depends_on:
       - rembg

@@ -5,7 +5,8 @@ const crypto = require('crypto');
 
 const router = express.Router();
 const DATA_DIR = path.join(__dirname, '..', 'data');
-const DATA_FILE = path.join(DATA_DIR, 'notifications.json');
+const DATA_FILE = process.env.NOTIFICATIONS_FILE || path.join(DATA_DIR, 'notifications.json');
+let writeLock = Promise.resolve();
 const LEVELS = new Set(['info', 'success', 'warning', 'danger']);
 const MAX_TITLE_LENGTH = 120;
 const MAX_CONTENT_LENGTH = 2000;
@@ -24,9 +25,17 @@ function readNotifications() {
   }
 }
 
-function writeNotifications(notifications) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(notifications, null, 2), 'utf8');
+function writeNotificationsAtomic(notifications) {
+  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+  const tempFile = `${DATA_FILE}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tempFile, JSON.stringify(notifications, null, 2), 'utf8');
+  fs.renameSync(tempFile, DATA_FILE);
+}
+
+function acquireLock() {
+  const next = writeLock.then(() => undefined, () => undefined);
+  writeLock = next;
+  return next;
 }
 
 function removeExpired(notifications) {
@@ -41,7 +50,7 @@ function removeExpired(notifications) {
 function getPublicNotifications() {
   const notifications = readNotifications();
   const activeNotifications = removeExpired(notifications);
-  if (activeNotifications.length !== notifications.length) writeNotifications(activeNotifications);
+  if (activeNotifications.length !== notifications.length) writeNotificationsAtomic(activeNotifications);
   return activeNotifications;
 }
 
@@ -52,7 +61,13 @@ const SESSION_TTL = 8 * 60 * 60 * 1000;
 function parseCookies(req) {
   return Object.fromEntries(String(req.headers.cookie || '').split(';').filter(Boolean).map((part) => {
     const index = part.indexOf('=');
-    return [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1).trim())];
+    const key = part.slice(0, index).trim();
+    const rawValue = part.slice(index + 1).trim();
+    try {
+      return [key, decodeURIComponent(rawValue)];
+    } catch {
+      return [key, rawValue];
+    }
   }));
 }
 
@@ -108,7 +123,7 @@ router.get('/notifications/:id', (req, res) => {
   return res.json({ ok: true, notification });
 });
 
-router.post('/notifications', requireMaintainer, (req, res) => {
+router.post('/notifications', requireMaintainer, async (req, res) => {
   const body = req.body || {};
   const title = cleanText(body.title, MAX_TITLE_LENGTH);
   const content = cleanText(body.content, MAX_CONTENT_LENGTH);
@@ -132,17 +147,19 @@ router.post('/notifications', requireMaintainer, (req, res) => {
     expiresAt,
     createdAt: new Date().toISOString(),
   };
+  await acquireLock();
   const notifications = removeExpired(readNotifications());
   notifications.unshift(notification);
-  writeNotifications(notifications);
+  writeNotificationsAtomic(notifications);
   return res.status(201).json({ ok: true, notification });
 });
 
-router.delete('/notifications/:id', requireMaintainer, (req, res) => {
+router.delete('/notifications/:id', requireMaintainer, async (req, res) => {
+  await acquireLock();
   const notifications = getPublicNotifications();
   const next = notifications.filter((item) => item.id !== req.params.id);
   if (next.length === notifications.length) return res.status(404).json({ ok: false, error: '通知不存在' });
-  writeNotifications(next);
+  writeNotificationsAtomic(next);
   return res.json({ ok: true });
 });
 

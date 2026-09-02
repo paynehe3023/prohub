@@ -10,3 +10,6 @@ Umi-OCR/
 .env
 .env.*
 !.env.example
+
+server/data-dev/
+server/uploads-dev/

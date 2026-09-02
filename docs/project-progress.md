@@ -258,6 +258,14 @@ node index.js        # Express on :3000
 | POST | `/api/parse` | 解析链接，body: `{url: "..."}` |
 | GET | `/api/proxy-image` | 图片代理，query: `?url=...` |
 | GET | `/api/proxy-video` | 视频代理，query: `?url=...` |
+
+## 七、配置说明更新（2026-09-02）
+
+- `docker-compose.dev.yml` 仅用于开发隔离环境，不应直接替代生产配置。
+- 开发环境中的 `TRUSTED_CORS_ORIGINS` 仅允许本地前端 Origin，例如 `http://localhost:5173,http://localhost:3001`。
+- `NOTIFICATIONS_FILE`、`VIDEO_UPLOAD_DIR`、`ADMIN_USERNAME`、`ADMIN_PASSWORD` 仅用于本地测试账号与独立数据目录，不得沿用到生产环境。
+- `REMBG_URL`、`VIDEO_WORKER_URL` 属于部署敏感项，必须指向可信内部服务地址。
+- 本次更新仅追加说明，没有修改前面的历史章节。
 | GET | `/api/health` | 健康检查 |
 
 ### 抠图相关
