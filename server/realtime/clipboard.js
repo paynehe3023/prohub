@@ -887,6 +887,7 @@ function registerClipboardRealtime(app, httpServer) {
       const requestedTtl = payload.ttlMinutes ?? body.ttlMinutes ?? DEFAULT_TTL_MINUTES;
       const room = rooms.get(roomId);
       if (!room) throw new Error('ROOM_NOT_FOUND');
+      if (event !== 'room:join') requireRoomMember(room, req);
 
       let result;
       switch (event) {

@@ -111,6 +111,7 @@ async function parseDouyin(url, sharedCaption = '') {
     let targetApiData = null;
     let lastApiData = null;
     try {
+      
       console.log(`[Douyin] 尝试 #${attempt + 1}: videoId=${videoId}`);
       const browser = await getBrowser();
       context = await browser.newContext({
@@ -170,7 +171,6 @@ async function parseDouyin(url, sharedCaption = '') {
       if (apiData?.aweme_detail) {
         const result = extractDouyinData({ awemeDetail: apiData.aweme_detail }, page);
         if (result && result.media.length > 0) {
-          await context.close().catch(() => {});
           return applySharedCaption(result, sharedCaption);
         }
       }
@@ -202,7 +202,6 @@ async function parseDouyin(url, sharedCaption = '') {
         console.log('[Douyin] 从 DOM script 提取到数据');
         const result = extractDouyinData(scriptData, page);
         if (result && result.media.length > 0) {
-          await context.close().catch(() => {});
           return applySharedCaption(result, sharedCaption);
         }
       }
@@ -223,13 +222,11 @@ async function parseDouyin(url, sharedCaption = '') {
       }).catch(() => ({}));
 
       if (ogData && (ogData.video || ogData.image)) {
-        await context.close().catch(() => {});
         return applySharedCaption(formatResult(ogData), sharedCaption);
       }
 
       // 7. 页面 title 兜底
       const title = await page.title().catch(() => '');
-      await context.close().catch(() => {});
       if (title && title !== '抖音' && !title.includes('记录美好生活')) {
         return applySharedCaption(formatResult({ title, url: videoPageUrl }), sharedCaption);
       }
@@ -241,11 +238,12 @@ async function parseDouyin(url, sharedCaption = '') {
       }
     } catch (e) {
       console.log('[Douyin] 错误:', e.message);
-      if (context) await context.close().catch(() => {});
       if (attempt < MAX_RETRIES) {
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
+    } finally {
+      if (context) await context.close().catch(() => {});
     }
   }
 

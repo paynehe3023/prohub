@@ -1,4 +1,6 @@
 const axios = require('axios');
+const dns = require('dns').promises;
+const net = require('net');
 const cheerio = require('cheerio');
 const { parseDouyin } = require('../parsers/douyin');
 const watermarkUtils = require('../utils/watermark');
@@ -9,6 +11,8 @@ const {
   allNoWatermark,
 } = watermarkUtils;
 const sharp = require('sharp');
+
+
 
 // ==================== 浏览器 UA 池 ====================
 const UA_POOL = [
@@ -984,6 +988,14 @@ async function removeWeiboWatermark(buffer) {
 }
 
 // ==================== 图片代理（解决微博等图床防盗链 403 + 微博原创水印擦除） ====================
+const IMAGE_PROXY_ALLOWED_HOSTS = new Set([
+  'sinaimg.cn', 'weibocdn.com', 'xhscdn.com', 'douyinpic.com', 'douyincdn.com', 'douyinvod.com', 'pstatp.com', 'bytedance.com', 'zjcdn.com', 'bytecdn.com', 'douyinstatic.com', 'ixigua.com', 'bytednsdoc.com', 'ibyteimg.com'
+]);
+const IMAGE_PROXY_MAX_BYTES = 20 * 1024 * 1024;
+function isPrivateImageHost(host) {
+  if (net.isIP(host)) return true;
+  return host === 'cloud.sandbox.v1.trae.cn' || host.endsWith('.local') || host.endsWith('.internal');
+}
 router.get('/proxy-image', async (req, res) => {
   try {
     const imageUrl = req.query.url;
@@ -991,10 +1003,12 @@ router.get('/proxy-image', async (req, res) => {
       return res.status(400).json({ error: '缺少 url 参数' });
     }
 
-    // 只允许已知图床域名
-    const allowed = ['sinaimg.cn', 'weibocdn.com', 'xhscdn.com', 'douyinpic.com', 'douyincdn.com', 'douyinvod.com', 'pstatp.com', 'bytedance.com', 'zjcdn.com', 'bytecdn.com', 'douyinstatic.com', 'ixigua.com', 'bytednsdoc.com', 'ibyteimg.com'];
-    const host = new URL(imageUrl).hostname;
-    if (!allowed.some(d => host.includes(d))) {
+    const parsedUrl = new URL(imageUrl);
+    const host = parsedUrl.hostname.toLowerCase();
+    if (isPrivateImageHost(host)) {
+      return res.status(403).json({ error: '不支持的图片域名' });
+    }
+    if (![...IMAGE_PROXY_ALLOWED_HOSTS].some((domain) => host === domain || host.endsWith(`.${domain}`))) {
       return res.status(403).json({ error: '不支持的图片域名' });
     }
 
@@ -1008,10 +1022,15 @@ router.get('/proxy-image', async (req, res) => {
       },
       responseType: 'arraybuffer',
       timeout: 20000,
+      maxContentLength: IMAGE_PROXY_MAX_BYTES,
+      maxRedirects: 5,
       validateStatus: s => s < 500,
     });
 
     let imgBuffer = Buffer.from(imgRes.data);
+    if (imgBuffer.length > IMAGE_PROXY_MAX_BYTES) {
+      return res.status(413).json({ error: '图片过大' });
+    }
 
     // 微博图片：擦除右下角原创水印（@作者名，烧入像素）
     if (domainKey === 'sinaimg.cn') {
@@ -1029,6 +1048,29 @@ router.get('/proxy-image', async (req, res) => {
   }
 });
 
+const VIDEO_PROXY_HOSTS = new Set([
+  'weibo.com', 'weibo.cn', 'weibocdn.com', 'sinaimg.cn',
+  'douyin.com', 'iesdouyin.com', 'pstatp.com', 'ixigua.com', 'bytecdn.com',
+  'xiaohongshu.com', 'xhscdn.com',
+]);
+function isPrivateIp(address) {
+  if (net.isIPv4(address)) {
+    const [a, b] = address.split('.').map(Number);
+    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  return net.isIPv6(address) && (address === '::1' || address === '::' || address.toLowerCase().startsWith('fc') || address.toLowerCase().startsWith('fd') || address.toLowerCase().startsWith('fe8') || address.toLowerCase().startsWith('fe9') || address.toLowerCase().startsWith('fea') || address.toLowerCase().startsWith('feb'));
+}
+async function assertSafeVideoUrl(value) {
+  const parsed = new URL(value);
+  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('INVALID_VIDEO_URL');
+  const hostname = parsed.hostname.toLowerCase().replace(/\\.$/, '');
+  if (![...VIDEO_PROXY_HOSTS].some(host => hostname === host || hostname.endsWith(`.${host}`))) throw new Error('VIDEO_HOST_NOT_ALLOWED');
+  const addresses = net.isIP(hostname) ? [hostname] : await dns.lookup(hostname, { all: true }).then(items => items.map(item => item.address));
+  if (!addresses.length || addresses.some(isPrivateIp)) throw new Error('VIDEO_HOST_NOT_ALLOWED');
+  return parsed.toString();
+}
+
 // ==================== 视频代理（解决微博视频防盗链 403） ====================
 // 关键技术点：
 // 1. 转发客户端 Range 头并透传 206/Content-Range/Accept-Ranges，否则 <video> 无法 seek/播放
@@ -1037,9 +1079,10 @@ router.get('/proxy-image', async (req, res) => {
 router.get('/proxy-video', async (req, res) => {
   try {
     const videoUrl = req.query.url;
-    if (!videoUrl || !videoUrl.startsWith('http')) {
+    if (!videoUrl || typeof videoUrl !== 'string') {
       return res.status(400).json({ error: '缺少 url 参数' });
     }
+    const safeVideoUrl = await assertSafeVideoUrl(videoUrl);
 
     const range = req.headers.range;
     console.log(`[ProxyVideo] ${videoUrl.slice(0, 80)} | Range: ${range || 'none'}`);
@@ -1048,7 +1091,7 @@ router.get('/proxy-video', async (req, res) => {
       'User-Agent': MOBILE_UA,
       // 按域名设置正确 Referer，避免抖音等 CDN 因防盗链 403
       'Referer': (() => {
-        const videoHost = (() => { try { return new URL(videoUrl).hostname; } catch { return ''; } })();
+        const videoHost = (() => { try { return new URL(safeVideoUrl).hostname; } catch { return ''; } })();
         if (videoHost.includes('douyin') || videoHost.includes('bytedance') || videoHost.includes('pstatp') || videoHost.includes('ixigua') || videoHost.includes('bytecdn')) return 'https://www.douyin.com/';
         if (videoHost.includes('xhscdn') || videoHost.includes('xiaohongshu')) return 'https://www.xiaohongshu.com/';
         return 'https://weibo.com/';
@@ -1059,11 +1102,11 @@ router.get('/proxy-video', async (req, res) => {
     };
     if (range) upstreamHeaders['Range'] = range;
 
-    const upRes = await axios.get(videoUrl, {
+    const upRes = await axios.get(safeVideoUrl, {
       headers: upstreamHeaders,
       responseType: 'stream',
       timeout: 120000,
-      maxRedirects: 6,
+      maxRedirects: 0,
       validateStatus: s => s < 400,
       decompress: false,
     });
