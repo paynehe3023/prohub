@@ -172,22 +172,20 @@ const hasUnreadNotifications = ref(false);
 const notificationItems = ref([]);
 const NOTIFICATIONS_READ_KEY = 'prohub-notifications-read';
 
+function normalizeNotificationId(id) { return String(id ?? ''); }
 function getReadNotificationIds() {
-  try { return new Set(JSON.parse(window.localStorage.getItem(NOTIFICATIONS_READ_KEY) || '[]')); } catch { return new Set(); }
+  try { return new Set(JSON.parse(window.localStorage.getItem(NOTIFICATIONS_READ_KEY) || '[]').map(normalizeNotificationId)); } catch { return new Set(); }
 }
-
-function saveReadNotificationIds(ids) {
-  window.localStorage.setItem(NOTIFICATIONS_READ_KEY, JSON.stringify([...ids]));
-}
+function saveReadNotificationIds(ids) { window.localStorage.setItem(NOTIFICATIONS_READ_KEY, JSON.stringify([...ids].map(normalizeNotificationId))); }
 
 async function loadNotificationStatus() {
   try {
     notificationItems.value = (await apiFetch(apiConfig.endpoints.notifications)).notifications || [];
-    const ids = new Set(notificationItems.value.map((item) => item.id));
+    const ids = new Set(notificationItems.value.map((item) => normalizeNotificationId(item.id)));
     const readIds = getReadNotificationIds();
     const activeReadIds = new Set([...readIds].filter((id) => ids.has(id)));
     saveReadNotificationIds(activeReadIds);
-    hasUnreadNotifications.value = notificationItems.value.some((item) => !activeReadIds.has(item.id));
+    hasUnreadNotifications.value = notificationItems.value.some((item) => !activeReadIds.has(normalizeNotificationId(item.id)));
   } catch {
     hasUnreadNotifications.value = false;
   }
@@ -258,78 +256,24 @@ function handleAboutRequest() {
   aboutOpen.value = true;
 }
 
-// 滚动隐藏逻辑与底部浮动按钮共用（累积距离制，见 useHideOnScroll.js）
-const { hidden: headerHidden } = useHideOnScroll();
+defineExpose({ refreshNotificationReadState });
 
-// Esc 关闭关于弹窗
+const { headerHidden } = useHideOnScroll();
+
 onMounted(() => {
-  document.addEventListener('keydown', handleKeydown);
-  window.addEventListener('prohub-notifications-updated', refreshNotificationReadState);
-  window.addEventListener('storage', refreshNotificationReadState);
-  document.addEventListener('pointerdown', handleDocumentPointerdown);
-  window.addEventListener('prohub:open-about', handleAboutRequest);
   loadNotificationStatus();
+  window.addEventListener('keydown', handleKeydown);
+  document.addEventListener('pointerdown', handleDocumentPointerdown);
+  window.addEventListener('prohub-open-about', handleAboutRequest);
+  window.addEventListener('prohub-notifications-updated', loadNotificationStatus);
 });
+
 onBeforeUnmount(() => {
-  document.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('keydown', handleKeydown);
   document.removeEventListener('pointerdown', handleDocumentPointerdown);
-  window.removeEventListener('prohub:open-about', handleAboutRequest);
+  window.removeEventListener('prohub-open-about', handleAboutRequest);
+  window.removeEventListener('prohub-notifications-updated', loadNotificationStatus);
   if (emailCopiedTimer) window.clearTimeout(emailCopiedTimer);
   if (qqCopiedTimer) window.clearTimeout(qqCopiedTimer);
 });
 </script>
-
-<style scoped>
-header {
-  transition: transform 340ms cubic-bezier(0.16, 1, 0.3, 1), opacity 260ms ease;
-  will-change: transform, opacity;
-}
-
-.mobile-search-enter-active,
-.mobile-search-leave-active {
-  overflow: hidden;
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.mobile-search-enter-from,
-.mobile-search-leave-to {
-  opacity: 0;
-  transform: translateX(8px);
-}
-
-.app-header-hidden {
-  /* 位移 + 渐隐双过渡：仅靠 translateY 会被藏到移动端浏览器地址栏后面，
-     视觉上像"没消失"；叠加 opacity 渐隐才是真正的消失动画。 */
-  transform: translateY(calc(-100% - 0.75rem - env(safe-area-inset-top)));
-  opacity: 0;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  header {
-    transition: none;
-  }
-}
-
-.about-modal-enter-active,
-.about-modal-leave-active {
-  transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.about-modal-enter-active section,
-.about-modal-leave-active section {
-  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.about-modal-enter-from,
-.about-modal-leave-to {
-  opacity: 0;
-}
-
-.about-modal-enter-from section,
-.about-modal-leave-to section {
-  opacity: 0;
-  transform: translateY(10px) scale(0.98);
-}
-
-</style>
